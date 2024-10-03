@@ -1,0 +1,83 @@
+[project]
+name = "txtox"
+version = "0.0.1"
+description = "Mapping transcriptomic profiles to anatomical coordinates"
+readme = "README.md"
+license = {text = "MIT License"}
+authors = [
+    {name = "Rohan Gala", email = "rohang@alleninstitute.org"},
+]
+
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
+
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "scipy",
+    "matplotlib",
+    "seaborn",
+    "pandas",
+    "scanpy",
+    "tqdm",
+    "rich",
+    "scikit-learn",
+    "timebudget",
+    "jupyterlab",
+    "ipywidgets",
+    "toml",
+    "anndata"]
+
+[project.optional-dependencies]
+
+dev=[
+    "build",
+    "pre-commit",
+    "ruff"
+]
+
+[project.urls]
+Repository = "https://github.com/alleninstitute/txtox/"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["txtox"]
+
+[tool.ruff]
+line-length = 120
+include = ["*.py", "*.pyi", "**/pyproject.toml", "*.ipynb"]
+
+
+[tool.ruff.lint]
+
+# See rules: https://beta.ruff.rs/docs/rules/
+select = [
+    "I",    # isort
+    "N",    # pep8-naming
+    "NPY",  # numpy
+    "RUF",  # ruff-specific rules
+]
+
+ignore = [
+    "N803",  # argument name should be lowercase; fine for matrices
+    "N806",  # variable name should be lowercase; fine for matrices
+    "NPY002", # allow calls to np.random; could cause slightly different results
+    "N812",
+]
+
+preview = true
+
+[tool.ruff.format]
+preview = true
+
+[tool.ruff.lint.isort]
+known-first-party = ["graphFeatureSelect"]
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
