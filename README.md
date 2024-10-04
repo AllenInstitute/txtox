@@ -9,7 +9,7 @@ This repo contains code for training and evaluating models on spatial transcript
 conda create -n txtox-torch-gpu python==3.12
 conda activate txtox-torch-gpu
 conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
-pip install lightning mlflow
+pip install lightning mlflow tensorboard
 pip install -e .
 pip install -e .[dev] 
 ```

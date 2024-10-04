@@ -5,6 +5,7 @@ from anndata._core.aligned_df import ImplicitModificationWarning
 from scipy.sparse import issparse
 from sklearn.preprocessing import LabelEncoder
 from torch.utils.data import Dataset
+import numpy as np
 
 from txtox.utils import get_paths
 
@@ -56,10 +57,10 @@ class AnnDataDataset(Dataset):
     def __getitem__(self, idx):
         gene_exp = self.adata.X[idx, :]
         if self.data_issparse:
-            gene_exp = gene_exp.toarray()
-        xyz = self.adata.obs[self.spatial_coords].values
-        celltype = self.cell_type_labelencoder.transform(self.adata.obs[self.cell_type].values)
-
+            gene_exp = gene_exp.toarray().astype(np.float32).reshape(-1,)
+        xyz = self.adata.obs.iloc[idx][self.spatial_coords].values.astype(np.float32)
+        celltype = self.cell_type_labelencoder.transform([self.adata.obs.iloc[idx][self.cell_type]])
+    
         return gene_exp, xyz, celltype
 
 

@@ -45,7 +45,7 @@ class AnnDataDataModule(L.LightningDataModule):
         return DataLoader(self.data_train, batch_size=self.batch_size, shuffle=True)
 
     def val_dataloader(self):
-        return DataLoader(self.data_val, batch_size=self.batch_size, shuffle=False)
+        return DataLoader(self.data_val, batch_size=self.batch_size, shuffle=False, pin_memory=True, num_workers=4)
 
     def test_dataloader(self):
         return DataLoader(self.data_test, batch_size=self.batch_size, shuffle=False)
