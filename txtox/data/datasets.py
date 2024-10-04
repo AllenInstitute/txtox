@@ -3,7 +3,7 @@ import warnings
 import anndata as ad
 from anndata._core.aligned_df import ImplicitModificationWarning
 from scipy.sparse import issparse
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import LabelEncoder
 from torch.utils.data import Dataset
 
 from txtox.utils import get_paths
@@ -46,7 +46,8 @@ class AnnDataDataset(Dataset):
         self.spatial_coords = spatial_coords
         self.cell_type = cell_type
         self.cell_type_list = adata.obs[cell_type].cat.categories.tolist()
-        self.cell_type_encoder = OneHotEncoder(categories=[self.cell_type_list])
+        self.cell_type_labelencoder = LabelEncoder()
+        self.cell_type_labelencoder.fit(self.cell_type_list)
         self.data_issparse = issparse(adata.X)
 
     def __len__(self):
@@ -57,7 +58,7 @@ class AnnDataDataset(Dataset):
         if self.data_issparse:
             gene_exp = gene_exp.toarray()
         xyz = self.adata.obs[self.spatial_coords].values
-        celltype = self.cell_type_encoder.fit_transform(self.adata.obs[self.cell_type].values.reshape(-1, 1))
+        celltype = self.cell_type_labelencoder.transform(self.adata.obs[self.cell_type].values)
 
         return gene_exp, xyz, celltype
 
@@ -68,6 +69,9 @@ def get_non_blank_genes(adata):
 
 
 def test_anndatadataset():
+    from txtox.data.datasets import AnnDataDataset
+    from txtox.utils import get_paths
+
     paths = get_paths()
     dataset = AnnDataDataset(
         path=paths["data_root"] + "VISp.h5ad",
@@ -76,4 +80,5 @@ def test_anndatadataset():
         spatial_coords=["x_ccf", "y_ccf", "z_ccf"],
         cell_type="supertype",
     )
+    gene_exp, xyz, celltype = dataset.__getitem__([1, 200])
     return dataset
