@@ -42,16 +42,24 @@ class AnnDataDataModule(L.LightningDataModule):
             self.data_predict = self.data_full
 
     def train_dataloader(self):
-        return DataLoader(self.data_train, batch_size=self.batch_size, shuffle=True)
+        return DataLoader(self.data_train, batch_size=self.batch_size, shuffle=True, pin_memory=True, num_workers=16)
 
     def val_dataloader(self):
-        return DataLoader(self.data_val, batch_size=self.batch_size, shuffle=False, pin_memory=True, num_workers=4)
+        return DataLoader(self.data_val, batch_size=self.batch_size, shuffle=False, pin_memory=True, num_workers=16)
 
     def test_dataloader(self):
         return DataLoader(self.data_test, batch_size=self.batch_size, shuffle=False)
 
     def predict_dataloader(self):
         return DataLoader(self.data_predict, batch_size=self.batch_size, shuffle=False)
+
+    def get_dataset_attributes(self):
+        self.celltypes = None
+        self.celltype_colors = None
+
+        self.n_unique_celltypes = None
+        
+        return self.unique_celltypes, self.celltype_to_idx, self.idx_to_celltype
 
 
 def test_anndatadatamodule():

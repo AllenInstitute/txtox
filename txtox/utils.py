@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 import anndata as ad
@@ -22,7 +23,7 @@ def get_paths(verbose: bool = False) -> dict:
     return config
 
 
-def get_datetime(expname: str = None):
+def get_datetime(expname: str = ""):
     datetime_str = datetime.now().strftime("%Y%m%d_%H%M%S")
     if expname is None:
         expname = datetime_str
@@ -47,5 +48,4 @@ def get_adata(path: str):
 
 
 if __name__ == "__main__":
-    # Using this to test functions; offload to pytest eventually.
-    get_paths(verbose=False)
+    pass
