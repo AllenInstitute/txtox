@@ -14,7 +14,7 @@ class LitMLPv0(L.LightningModule):
 
         # fmt:off
         self.encoder = nn.Sequential(
-            nn.Dropout(0.3), 
+            nn.Dropout(0.2), 
             nn.Linear(input_size, 100), 
             nn.GELU(), 
             nn.Linear(100, 20), 
@@ -22,7 +22,6 @@ class LitMLPv0(L.LightningModule):
         )
         # fmt:on
         self.spatial_out = nn.Sequential(nn.Linear(20, 20), nn.GELU(), nn.Linear(20, 3))
-
         self.label_out = nn.Sequential(nn.Linear(20, 20), nn.GELU(), nn.Linear(20, n_labels))
 
         # losses
@@ -57,31 +56,29 @@ class LitMLPv0(L.LightningModule):
         ce_loss = self.loss_ce(celltype_pred, celltype.squeeze())
         total_loss = self.weight_mse * mse_loss + self.weight_ce * ce_loss
 
+        # Log losses
+        self.log("train_mse_loss", mse_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log("train_ce_loss", ce_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log("train_total_loss", total_loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+
         # Calculate metrics
-        train_metric_rmse = self.metric_rmse(xyz_pred, xyz)
         train_metric_rmse_overall = self.metric_rmse_overall(xyz_pred, xyz)
         train_overall_acc = self.metric_overall_acc(preds=celltype_pred, target=celltype.reshape(-1))
         train_macro_acc = self.metric_macro_acc(preds=celltype_pred, target=celltype.reshape(-1))
-        train_metric_multiclass_acc = self.metric_multiclass_acc(preds=celltype_pred, target=celltype.reshape(-1))
+        train_metric_rmse = self.metric_rmse(xyz_pred, xyz)
 
-        # Log losses and metrics
-        self.log("train_mse_loss", mse_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        self.log("train_ce_loss", ce_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        self.log(
-            "train_rmse_overall", train_metric_rmse_overall, on_step=True, on_epoch=True, prog_bar=True, logger=True
-        )
-        self.log("train_total_loss", total_loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        # Log metrics
+        self.log("train_rmse_overall", train_metric_rmse_overall, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log("train_overall_acc", train_overall_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log("train_macro_acc", train_macro_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         log_dict = {
             "train_x_rmse": train_metric_rmse[0],
             "train_y_rmse": train_metric_rmse[1],
             "train_z_rmse": train_metric_rmse[2],
         }
         self.log_dict(log_dict, on_step=False, on_epoch=True, prog_bar=False, logger=True)
-        self.log("train_overall_acc", train_overall_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log("train_macro_acc", train_macro_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        # self.log("train_metric_multiclass_acc", train_metric_multiclass_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        # self.log("train_metric_rmse", train_metric_rmse, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        return total_loss  # this will be minimized
+        
+        return total_loss  
 
     def on_train_epoch_end(self):
         pass

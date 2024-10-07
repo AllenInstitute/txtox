@@ -53,14 +53,6 @@ class AnnDataDataModule(L.LightningDataModule):
     def predict_dataloader(self):
         return DataLoader(self.data_predict, batch_size=self.batch_size, shuffle=False)
 
-    def get_dataset_attributes(self):
-        self.celltypes = None
-        self.celltype_colors = None
-
-        self.n_unique_celltypes = None
-        
-        return self.unique_celltypes, self.celltype_to_idx, self.idx_to_celltype
-
 
 def test_anndatadatamodule():
     from txtox.data.datamodules import AnnDataDataModule
