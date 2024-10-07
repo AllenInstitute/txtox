@@ -6,7 +6,7 @@ from torchmetrics.classification import MulticlassAccuracy
 
 
 class LitMLPv0(L.LightningModule):
-    def __init__(self, input_size=500, n_labels=10, weight_mse=1.0, weight_ce=1.0):
+    def __init__(self, input_size=500, n_labels=126, weight_mse=1.0, weight_ce=1.0):
         super(LitMLPv0, self).__init__()
 
         self.weight_mse = weight_mse
@@ -107,8 +107,10 @@ class LitMLPv0(L.LightningModule):
     def on_validation_epoch_end(self):
         pass
 
-    def test_step(self):
-        pass
+    def test_step(self, batch, batch_idx):
+        gene_exp, xyz, celltype = batch
+        xyz_pred, celltype_pred = self.forward(gene_exp)
+        return xyz_pred.to("cpu").numpy(), celltype_pred.to("cpu").numpy()
 
     def on_test_epoch_end(self):
         pass
@@ -116,7 +118,7 @@ class LitMLPv0(L.LightningModule):
     def predict_step(self, batch, batch_idx):
         gene_exp, xyz, celltype = batch
         xyz_pred, celltype_pred = self.forward(gene_exp)
-        return xyz_pred, celltype_pred
+        return xyz_pred.to("cpu").numpy(), celltype_pred.to("cpu").numpy()
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)

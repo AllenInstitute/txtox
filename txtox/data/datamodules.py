@@ -23,21 +23,18 @@ class AnnDataDataModule(L.LightningDataModule):
 
 
     def setup(self, stage: str):
+        self.adatas = []
+        for adata_path in self.adata_paths:
+            self.adatas.append(AnnDataDataset(adata_path))
+        self.data_full = ConcatDataset(self.adatas)
+        self.data_train, self.data_test = random_split(self.data_full, [0.8, 0.2], generator=torch.Generator().manual_seed(0))
+
         if stage == "fit":
-            self.adatas = []
-            for adata_path in self.adata_paths:
-                self.adatas.append(AnnDataDataset(adata_path))
-            self.data_full = ConcatDataset(self.adatas)
-            self.data_train, self.data_test = random_split(
-                self.data_full, [0.8, 0.2], generator=torch.Generator().manual_seed(0)
-            )
-            self.data_train, self.data_val = random_split(
-                self.data_train, [0.8, 0.2], generator=torch.Generator().manual_seed(1)
-            )
+            self.data_train, self.data_val = random_split(self.data_train, [0.8, 0.2], generator=torch.Generator().manual_seed(1))
 
-        if stage == "test":
-            self.data_test = self.data_test
-
+        if stage == "test": # Note: this is not the test set. Just a quick way to check the model through lightining.
+            _, self.data_test = random_split(self.data_full, [0.9, 0.1], generator=torch.Generator().manual_seed(0))
+            
         if stage == "predict":
             self.data_predict = self.data_full
 
@@ -48,10 +45,10 @@ class AnnDataDataModule(L.LightningDataModule):
         return DataLoader(self.data_val, batch_size=self.batch_size, shuffle=False, pin_memory=True, num_workers=16)
 
     def test_dataloader(self):
-        return DataLoader(self.data_test, batch_size=self.batch_size, shuffle=False)
+        return DataLoader(self.data_test, batch_size=self.batch_size, shuffle=False, pin_memory=True, num_workers=16)
 
     def predict_dataloader(self):
-        return DataLoader(self.data_predict, batch_size=self.batch_size, shuffle=False)
+        return DataLoader(self.data_predict, batch_size=self.batch_size, shuffle=False, pin_memory=True, num_workers=16)
 
 
 def test_anndatadatamodule():
