@@ -163,4 +163,5 @@ cython_debug/
 
 # data folder
 /data/
+/notebooks/lightning_logs/
 /config.toml
