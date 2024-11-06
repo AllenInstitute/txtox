@@ -3,9 +3,9 @@
 import lightning as L
 import torch
 import torch.nn as nn
+from torch_geometric.nn import GCNConv
 from torchmetrics import MeanSquaredError
 from torchmetrics.classification import MulticlassAccuracy
-from torch_geometric.nn import GCNConv
 
 
 class LitGNNHetReg(L.LightningModule):
@@ -178,7 +178,7 @@ def vec2mat_cholesky3d(l_vec):
     """
     L = torch.zeros((l_vec.size(0), 3, 3), dtype=l_vec.dtype, device=l_vec.device)
 
-    L[:, 0, 0] = nn.functional.softplus(l_vec[:, 0]) 
+    L[:, 0, 0] = nn.functional.softplus(l_vec[:, 0])
     L[:, 1, 1] = nn.functional.softplus(l_vec[:, 1])
     L[:, 2, 2] = nn.functional.softplus(l_vec[:, 2])
 
@@ -194,12 +194,12 @@ class GaussianNLLLoss3d(nn.Module):
         self.reduce = reduce
 
     def forward(self, mu, L, x):
-        diff = (x - mu).unsqueeze(-1) # (batch_size, 3, 1)
-        z = torch.cholesky_solve(diff, L, upper=False) # (batch_size, 3, 1)
-        quadratic = torch.bmm(diff.transpose(1, 2), z).squeeze() # (batch_size, )
-        log_det = 2.0 * torch.sum(torch.log(torch.diagonal(L, dim1=1, dim2=2)), dim=1) # (batch_size, )
-        nll = 0.5 * (quadratic + log_det + 3 * torch.log(torch.tensor(2 * torch.pi))) # (batch_size, )
-        if self.reduce:  
+        diff = (x - mu).unsqueeze(-1)  # (batch_size, 3, 1)
+        z = torch.cholesky_solve(diff, L, upper=False)  # (batch_size, 3, 1)
+        quadratic = torch.bmm(diff.transpose(1, 2), z).squeeze()  # (batch_size, )
+        log_det = 2.0 * torch.sum(torch.log(torch.diagonal(L, dim1=1, dim2=2)), dim=1)  # (batch_size, )
+        nll = 0.5 * (quadratic + log_det + 3 * torch.log(torch.tensor(2 * torch.pi)))  # (batch_size, )
+        if self.reduce:
             return torch.mean(nll)
         else:
             return nll
