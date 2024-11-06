@@ -144,8 +144,11 @@ class LitGNNv0(L.LightningModule):
         xyz = xyz.squeeze(dim=0)
         celltype = celltype.squeeze(dim=0)
 
-        xyz_pred, celltype_pred = self.forward(gene_exp)
-        return xyz_pred.to("cpu").numpy(), celltype_pred.to("cpu").numpy()
+        xyz_pred, celltype_pred = self.forward(gene_exp, edgelist)
+        # return only the last entry. This corresponds to idx passed to __getitem__.
+        xyz_pred = xyz_pred.to("cpu").numpy()[-1, :]
+        celltype_pred = celltype_pred.to("cpu").numpy()[-1, :]
+        return xyz_pred, celltype_pred
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
