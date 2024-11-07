@@ -3,22 +3,25 @@
 import lightning as L
 import torch
 import torch.nn as nn
-from torch_geometric.nn import GCNConv
+from torch_geometric.nn.conv import GATv2Conv
+#from txtox.models.gatv2 import GATv2Conv
 from torchmetrics import MeanSquaredError
 from torchmetrics.classification import MulticlassAccuracy
 
 
 class LitGNNHetReg(L.LightningModule):
-    def __init__(self, input_dim=500, hidden_dim=100, n_labels=126, weight_gnll=1.0, weight_ce=1.0):
+    def __init__(self, input_dim=500, hidden_dim=10, n_labels=126, weight_gnll=1.0, weight_ce=1.0):
         super(LitGNNHetReg, self).__init__()
 
         self.weight_gnll = weight_gnll
         self.weight_ce = weight_ce
 
         # fmt:off
-        self.conv1 = GCNConv(input_dim, hidden_dim)
-        self.conv2 = GCNConv(hidden_dim, hidden_dim)
-        self.encoder = torch.nn.Sequential(torch.nn.Dropout(0.2), torch.nn.Linear(hidden_dim, 20), torch.nn.GELU())
+        n_heads = 5
+        self.conv1 = GATv2Conv(input_dim, hidden_dim, heads=n_heads, concat=True)
+        self.conv2 = GATv2Conv(hidden_dim*n_heads, hidden_dim, heads=n_heads, concat=True)
+        self.skip = torch.nn.Linear(input_dim, hidden_dim*n_heads)
+        self.encoder = torch.nn.Sequential(torch.nn.Dropout(0.2), torch.nn.Linear(hidden_dim*n_heads, 20), torch.nn.GELU())
         self.spatial_mu_out = torch.nn.Sequential(torch.nn.Linear(20, 20), torch.nn.GELU(), torch.nn.Linear(20, 3))
         self.spatial_l_out = torch.nn.Sequential(torch.nn.Linear(20, 20), torch.nn.GELU(), torch.nn.Linear(20, 6))
         self.label_out = torch.nn.Sequential(torch.nn.Linear(20, 20), torch.nn.GELU(), torch.nn.Linear(20, n_labels))
@@ -43,10 +46,13 @@ class LitGNNHetReg(L.LightningModule):
         )
 
     def forward(self, x, edge_index):
-        x = self.conv1(x, edge_index)
-        x = self.gelu(x)
-        x = self.conv2(x, edge_index)
-        x = self.gelu(x)
+        y = self.conv1(x, edge_index)
+        y = self.gelu(y)
+        y = self.conv2(y, edge_index)
+        y = self.gelu(y)
+        # add skip connection
+
+        x = self.skip(x) + y
         x = self.encoder(x)
         xyz_mu = self.spatial_mu_out(x)
         xyz_L = vec2mat_cholesky3d(self.spatial_l_out(x))

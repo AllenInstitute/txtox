@@ -14,7 +14,7 @@ def main():
 
     # paths
     paths = get_paths()
-    expname = get_datetime(expname="VISp_nhood_GNNhetReg_stablefix")
+    expname = get_datetime(expname="VISp_nhood_GNNhetReg_attres")
     log_path = paths["data_root"] + f"logs/{expname}"
     checkpoint_path = paths["data_root"] + f"checkpoints/{expname}"
 
@@ -35,7 +35,6 @@ def main():
         callbacks=[checkpoint_callback],
     )
     trainer.fit(model=model, datamodule=datamodule)
-
 
 if __name__ == "__main__":
     main()
