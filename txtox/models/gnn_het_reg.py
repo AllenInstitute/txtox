@@ -178,9 +178,10 @@ def vec2mat_cholesky3d(l_vec):
     """
     L = torch.zeros((l_vec.size(0), 3, 3), dtype=l_vec.dtype, device=l_vec.device)
 
-    L[:, 0, 0] = nn.functional.softplus(l_vec[:, 0])
-    L[:, 1, 1] = nn.functional.softplus(l_vec[:, 1])
-    L[:, 2, 2] = nn.functional.softplus(l_vec[:, 2])
+    eps = 1e-5  # add to diagonal for numerical stability
+    L[:, 0, 0] = nn.functional.softplus(l_vec[:, 0]) + eps
+    L[:, 1, 1] = nn.functional.softplus(l_vec[:, 1]) + eps
+    L[:, 2, 2] = nn.functional.softplus(l_vec[:, 2]) + eps
 
     L[:, 1, 0] = l_vec[:, 3]
     L[:, 2, 0] = l_vec[:, 4]
