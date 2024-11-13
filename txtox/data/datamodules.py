@@ -21,20 +21,23 @@ class AnnDataDataModule(L.LightningDataModule):
 
         self.batch_size = batch_size
 
-
     def setup(self, stage: str):
         self.adatas = []
         for adata_path in self.adata_paths:
             self.adatas.append(AnnDataDataset(adata_path))
         self.data_full = ConcatDataset(self.adatas)
-        self.data_train, self.data_test = random_split(self.data_full, [0.8, 0.2], generator=torch.Generator().manual_seed(0))
+        self.data_train, self.data_test = random_split(
+            self.data_full, [0.8, 0.2], generator=torch.Generator().manual_seed(0)
+        )
 
         if stage == "fit":
-            self.data_train, self.data_val = random_split(self.data_train, [0.8, 0.2], generator=torch.Generator().manual_seed(1))
+            self.data_train, self.data_val = random_split(
+                self.data_train, [0.8, 0.2], generator=torch.Generator().manual_seed(1)
+            )
 
-        if stage == "test": # Note: this is not the test set. Just a quick way to check the model through lightining.
+        if stage == "test":  # Note: this is not the test set. Just a quick way to check the model through lightining.
             _, self.data_test = random_split(self.data_full, [0.9, 0.1], generator=torch.Generator().manual_seed(0))
-            
+
         if stage == "predict":
             self.data_predict = self.data_full
 
@@ -52,10 +55,13 @@ class AnnDataDataModule(L.LightningDataModule):
 
 
 class AnnDataGraphDataModule(L.LightningDataModule):
-    def __init__(self, data_dir: None, 
-                file_names: list[str] = ["VISp_nhood.h5ad"], 
-                batch_size: int = 1,
-                spatial_coords: list[str] = ["x_ccf", "y_ccf", "z_ccf"]):
+    def __init__(
+        self,
+        data_dir: None,
+        file_names: list[str] = ["VISp_nhood.h5ad"],
+        batch_size: int = 1,
+        spatial_coords: list[str] = ["x_ccf", "y_ccf", "z_ccf"],
+    ):
         super().__init__()
         if data_dir is None:
             data_dir = get_paths()["data_root"]
@@ -67,20 +73,23 @@ class AnnDataGraphDataModule(L.LightningDataModule):
         self.spatial_coords = spatial_coords
         self.batch_size = batch_size
 
-
     def setup(self, stage: str):
         self.adatas = []
         for adata_path in self.adata_paths:
             self.adatas.append(AnnDataGraphDataset(adata_path, spatial_coords=self.spatial_coords))
         self.data_full = ConcatDataset(self.adatas)
-        self.data_train, self.data_test = random_split(self.data_full, [0.8, 0.2], generator=torch.Generator().manual_seed(0))
+        self.data_train, self.data_test = random_split(
+            self.data_full, [0.8, 0.2], generator=torch.Generator().manual_seed(0)
+        )
 
         if stage == "fit":
-            self.data_train, self.data_val = random_split(self.data_train, [0.8, 0.2], generator=torch.Generator().manual_seed(1))
+            self.data_train, self.data_val = random_split(
+                self.data_train, [0.8, 0.2], generator=torch.Generator().manual_seed(1)
+            )
 
-        if stage == "test": # Note: this is not the test set. Just a quick way to check the model through lightining.
+        if stage == "test":  # Note: this is not the test set. Just a quick way to check the model through lightining.
             _, self.data_test = random_split(self.data_full, [0.9, 0.1], generator=torch.Generator().manual_seed(0))
-            
+
         if stage == "predict":
             self.data_predict = self.data_full
 
