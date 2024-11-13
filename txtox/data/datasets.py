@@ -140,11 +140,17 @@ class AnnDataGraphDataset(Dataset):
         self.data_issparse = issparse(adata.X)
 
     def get_neighbors(self, idx):
+        """
+        Get all neighbors up to max_order. Self is included as the last entry
+        """
         nhood_idx = []
         for i in range(1, self.max_order + 1):
             nhood_idx.append(np.where(self.adj_matrices[i][idx, :].toarray().flatten())[0])
-        nhood_idx = np.concatenate(nhood_idx, axis=0)
-        nhood_idx = np.unique(np.concatenate([nhood_idx, [idx]]))
+        nhood_idx = np.unique(np.concatenate(nhood_idx, axis=0))
+        # remove idx from nhood_idx if it exists
+        nhood_idx = np.setdiff1d(nhood_idx, [idx])
+        # place it at the end
+        nhood_idx = np.concatenate([nhood_idx, [idx]])
         return nhood_idx
 
     def __len__(self):
