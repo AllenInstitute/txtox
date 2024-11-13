@@ -68,7 +68,9 @@ class LitMLPv0(L.LightningModule):
         train_metric_rmse = self.metric_rmse(xyz_pred, xyz)
 
         # Log metrics
-        self.log("train_rmse_overall", train_metric_rmse_overall, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log(
+            "train_rmse_overall", train_metric_rmse_overall, on_step=False, on_epoch=True, prog_bar=True, logger=True
+        )
         self.log("train_overall_acc", train_overall_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         self.log("train_macro_acc", train_macro_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         log_dict = {
@@ -77,8 +79,8 @@ class LitMLPv0(L.LightningModule):
             "train_z_rmse": train_metric_rmse[2],
         }
         self.log_dict(log_dict, on_step=False, on_epoch=True, prog_bar=False, logger=True)
-        
-        return total_loss  
+
+        return total_loss
 
     def on_train_epoch_end(self):
         pass

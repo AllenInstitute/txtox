@@ -71,6 +71,7 @@ ignore = [
     "N806",  # variable name should be lowercase; fine for matrices
     "NPY002", # allow calls to np.random; could cause slightly different results
     "N812",
+    "N816", # allow mixed case variable names
 ]
 
 preview = true

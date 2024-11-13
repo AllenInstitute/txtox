@@ -4,7 +4,6 @@ import lightning as L
 import torch
 import torch.nn as nn
 from torch_geometric.nn.conv import GATv2Conv
-#from txtox.models.gatv2 import GATv2Conv
 from torchmetrics import MeanSquaredError
 from torchmetrics.classification import MulticlassAccuracy
 
@@ -50,9 +49,8 @@ class LitGNNHetReg(L.LightningModule):
         y = self.gelu(y)
         y = self.conv2(y, edge_index)
         y = self.gelu(y)
-        # add skip connection
-
         x = self.skip(x) + y
+
         x = self.encoder(x)
         xyz_mu = self.spatial_mu_out(x)
         xyz_L = vec2mat_cholesky3d(self.spatial_l_out(x))

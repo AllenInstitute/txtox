@@ -1,9 +1,9 @@
 import lightning as L
 import torch
 import torch.nn as nn
+from torch_geometric.nn import GCNConv
 from torchmetrics import MeanSquaredError
 from torchmetrics.classification import MulticlassAccuracy
-from torch_geometric.nn import GCNConv
 
 
 class LitGNNv0(L.LightningModule):
