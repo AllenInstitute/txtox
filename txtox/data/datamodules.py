@@ -52,7 +52,10 @@ class AnnDataDataModule(L.LightningDataModule):
 
 
 class AnnDataGraphDataModule(L.LightningDataModule):
-    def __init__(self, data_dir: None, file_names: list[str] = ["VISp_nhood.h5ad"], batch_size: int = 1):
+    def __init__(self, data_dir: None, 
+                file_names: list[str] = ["VISp_nhood.h5ad"], 
+                batch_size: int = 1,
+                spatial_coords: list[str] = ["x_ccf", "y_ccf", "z_ccf"]):
         super().__init__()
         if data_dir is None:
             data_dir = get_paths()["data_root"]
@@ -61,13 +64,14 @@ class AnnDataGraphDataModule(L.LightningDataModule):
             if not Path(adata_path).exists():
                 raise FileNotFoundError(f"File not found: {adata_path}")
 
+        self.spatial_coords = spatial_coords
         self.batch_size = batch_size
 
 
     def setup(self, stage: str):
         self.adatas = []
         for adata_path in self.adata_paths:
-            self.adatas.append(AnnDataGraphDataset(adata_path))
+            self.adatas.append(AnnDataGraphDataset(adata_path, spatial_coords=self.spatial_coords))
         self.data_full = ConcatDataset(self.adatas)
         self.data_train, self.data_test = random_split(self.data_full, [0.8, 0.2], generator=torch.Generator().manual_seed(0))
 
