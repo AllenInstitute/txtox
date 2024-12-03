@@ -101,7 +101,7 @@ class LitFusemapGNNAE(L.LightningModule):
         )
 
         # Log losses
-        
+
         self.log(f"{steptype}_mse_loss", mse_loss, **self.logging_defaults)
         self.log(f"{steptype}_ce_regions_loss", ce_loss_regions, **self.logging_defaults)
         self.log(f"{steptype}_ce_celltypes_loss", ce_loss_celltypes, **self.logging_defaults)
@@ -136,7 +136,7 @@ class LitFusemapGNNAE(L.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         steptype = "validation"
-        
+
         zc, edge_index, edge_weight, section_idx, brain_idx, label_celltypes, label_regions = batch
         zc_recon, region_logits, celltype_logits = self.forward(zc, edge_index, edge_weight, section_idx, brain_idx)
 
@@ -147,7 +147,7 @@ class LitFusemapGNNAE(L.LightningModule):
         self.log(f"{steptype}_mse_loss", mse_loss, **defaults)
 
         # Metrics for regions
-        
+
         for name, metric in [
             ("overall_acc", self.metric_overall_acc_regions),
             ("macro_acc", self.metric_macro_acc_regions),

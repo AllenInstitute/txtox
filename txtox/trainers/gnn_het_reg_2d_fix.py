@@ -10,7 +10,7 @@ from txtox.utils import get_datetime, get_paths
 def main():
     # data parameters, we'll eventually obtain this from the data.
     n_genes = 500
-    n_labels = 158 # changed to 158 for test_one_section_hemi.h5ad
+    n_labels = 158  # changed to 158 for test_one_section_hemi.h5ad
 
     # paths
     paths = get_paths()
