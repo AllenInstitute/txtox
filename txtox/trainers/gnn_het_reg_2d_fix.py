@@ -28,6 +28,7 @@ def main():
     datamodule = AnnDataGraphDataModule(
         data_dir=paths["data_root"],
         file_names=["test_one_section_hemi.h5ad"],
+        celltype="subclass",
         spatial_coords=["x_section", "y_section", "z_section"],
         batch_size=1,
     )
