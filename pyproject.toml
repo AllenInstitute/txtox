@@ -80,5 +80,5 @@ preview = true
 preview = true
 
 [tool.ruff.lint.isort]
-known-first-party = ["graphFeatureSelect"]
+known-first-party = ["txtox"]
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
