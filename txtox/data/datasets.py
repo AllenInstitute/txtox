@@ -99,9 +99,9 @@ class AnnDataGraphDataset(Dataset):
         self.path = path
 
         adata = ad.read_h5ad(self.path)
-        assert (
-            "spatial_connectivities" in adata.obsp.keys()
-        ), "Spatial connectivities not found. Run `sc.pp.neighbors` first."
+        assert "spatial_connectivities" in adata.obsp.keys(), (
+            "Spatial connectivities not found. Run `sc.pp.neighbors` first."
+        )
         assert "spatial_distances" in adata.obsp.keys(), "Spatial distances not found. Run `sc.pp.neighbors` first."
 
         # filter genes
