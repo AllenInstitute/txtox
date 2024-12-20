@@ -14,7 +14,7 @@ def main():
 
     # paths
     paths = get_paths()
-    expname = get_datetime(expname="one_sec_hemi_nhood_GNNhetReg_attres_2d_msl_ce-0.1_tests")
+    expname = get_datetime(expname="one_sec_hemi_nhood_GNNhetReg_attres_2d_msl_ce-0.1")
     log_path = paths["data_root"] + f"logs/{expname}"
     checkpoint_path = paths["data_root"] + f"checkpoints/{expname}"
 

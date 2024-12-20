@@ -7,14 +7,14 @@
 # loss + forward calculation is modified based on recommendation in Stirn et al. 2023 (equation 5)
 
 import math
-import numpy as np
+
 import lightning as L
+import numpy as np
 import torch
 import torch.nn as nn
 from torch_geometric.nn.conv import GATv2Conv
 from torchmetrics import MeanSquaredError
 from torchmetrics.classification import MulticlassAccuracy
-
 
 EULER_GAMMA = np.euler_gamma
 PI = np.pi
