@@ -11,6 +11,8 @@ conda activate txtox-torch-gpu
 conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
 pip install torch_geometric
 pip install lightning mlflow tensorboard
+# low level library used by PyG: pyg-lib
+pip install https://data.pyg.org/whl/torch-2.2.0%2Bcu121.html
 pip install -e .
 pip install -e .[dev] 
 ```
