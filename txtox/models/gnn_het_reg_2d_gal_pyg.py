@@ -5,6 +5,7 @@
 # z-section is provided as input.
 # GAL distribution parameters are only learnt for x and y dimensions.
 # Refs: 16_gal.ipynb, and Chapter 6 of Kotz et al. 2001.
+# PyG dataloaders: "minibatching" involves multiple input_nodes and their neighbors.
 
 import math
 
@@ -90,8 +91,8 @@ class LitGNNHetReg2dGAL(L.LightningModule):
         gene_exp, edgelist, xy, section_idx, celltype = self.proc_batch(batch)
         loc_pred, m_pred, L_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
 
-        # log batch size - here this is the total number of input nodes.
-        # this is different from the batch_size passed to the NeighborLoader!
+        # Training loss should be calculated for all nodes (including input_nodes and neighbors).
+        # batch_size passed to NeighborLoader refers to the number of input_nodes only.
         batch_size = batch.gene_exp.size(0) 
 
         # Calculate losses
@@ -132,14 +133,23 @@ class LitGNNHetReg2dGAL(L.LightningModule):
         gene_exp, edgelist, xy, section_idx, celltype = self.proc_batch(batch)
         loc_pred, m_pred, L_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
 
-        batch_size = batch.gene_exp.size(0)
+        # Validation metrics should only be calculated for the input_nodes, 
+        # and not their neighbors (which are allowed to be part of the training set)
+        idx = torch.where(batch.n_id == batch.input_id.unsqueeze(-1))[0]
+        batch_size = idx.shape[0]
+
+        # slice the data for metrics not calculated for neighbors.
+        xy_ = xy[idx]
+        celltype_ = celltype[idx]
+        loc_pred_ = loc_pred[idx]
+        celltype_pred_ = celltype_pred[idx]
 
         # Calculate metrics
-        val_metric_rmse = self.metric_rmse(loc_pred, xy)
-        val_metric_rmse_overall = self.metric_rmse_overall(loc_pred, xy)
-        val_overall_acc = self.metric_overall_acc(preds=celltype_pred, target=celltype.reshape(-1))
-        val_macro_acc = self.metric_macro_acc(preds=celltype_pred, target=celltype.reshape(-1))
-        val_metric_multiclass_acc = self.metric_multiclass_acc(preds=celltype_pred, target=celltype.reshape(-1))
+        val_metric_rmse = self.metric_rmse(loc_pred_, xy_)
+        val_metric_rmse_overall = self.metric_rmse_overall(loc_pred_, xy_)
+        val_overall_acc = self.metric_overall_acc(preds=celltype_pred_, target=celltype_.reshape(-1))
+        val_macro_acc = self.metric_macro_acc(preds=celltype_pred_, target=celltype_.reshape(-1))
+        val_metric_multiclass_acc = self.metric_multiclass_acc(preds=celltype_pred_, target=celltype_.reshape(-1))
 
         log_dict = {"val_x_rmse": val_metric_rmse[0], "val_y_rmse": val_metric_rmse[1]}
         self.log_dict(log_dict, on_step=False, on_epoch=True, prog_bar=False, logger=True, batch_size=batch_size)
@@ -153,11 +163,15 @@ class LitGNNHetReg2dGAL(L.LightningModule):
     def test_step(self, batch, batch_idx):
         gene_exp, edgelist, xy, section_idx, celltype = self.proc_batch(batch)
         loc_pred, m_pred, L_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
+
+        # slice the data for metrics not calculated for neighbors.
+        idx = torch.where(batch.n_id == batch.input_id.unsqueeze(-1))[0]
+
         return (
-            loc_pred.to("cpu").numpy(),
-            m_pred.to("cpu").numpy(),
-            L_pred.to("cpu").numpy(),
-            celltype_pred.to("cpu").numpy(),
+            loc_pred[idx].to("cpu").numpy(),
+            m_pred[idx].to("cpu").numpy(),
+            L_pred[idx].to("cpu").numpy(),
+            celltype_pred[idx].to("cpu").numpy(),
         )
 
     def on_test_epoch_end(self):
@@ -167,11 +181,15 @@ class LitGNNHetReg2dGAL(L.LightningModule):
         gene_exp, edgelist, xy, section_idx, celltype = self.proc_batch(batch)
         loc_pred, m_pred, L_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
 
-        # return only the last entry. This corresponds to idx passed to __getitem__.
-        loc_pred = loc_pred.to("cpu").numpy()[-1, :]
-        m_pred = m_pred.to("cpu").numpy()[-1, :]
-        L_pred = L_pred.to("cpu").numpy()[-1, :]
-        celltype_pred = celltype_pred.to("cpu").numpy()[-1, :]
+        # Validation metrics should only be calculated for the input_nodes, 
+        # and not their neighbors (which are allowed to be part of the training set)
+        idx = torch.where(batch.n_id == batch.input_id.unsqueeze(-1))[0]
+        batch_size = idx.shape[0]
+
+        loc_pred = loc_pred[idx].to("cpu").numpy()
+        m_pred = m_pred[idx].to("cpu").numpy()
+        L_pred = L_pred[idx].to("cpu").numpy()
+        celltype_pred = celltype_pred[idx].to("cpu").numpy()
         return loc_pred, m_pred, L_pred, celltype_pred
 
     def configure_optimizers(self):
