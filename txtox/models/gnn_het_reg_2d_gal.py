@@ -1,10 +1,10 @@
-# heteroscedastic regression (predicting variance per-sample) with GNNs.
+# heteroscedastic regression (predicting variance per-sample) with GNNs with skew distribution.
 
 # In this version:
 # section coordinates are used.
 # z-section is provided as input.
-# mean and covariance is only learnt for x and y dimensions.
-# loss + forward calculation is modified based on recommendation in Stirn et al. 2023 (equation 5)
+# GAL distribution parameters are only learnt for x and y dimensions.
+# Refs: 16_gal.ipynb, and Chapter 6 of Kotz et al. 2001.
 
 import math
 
@@ -12,7 +12,7 @@ import lightning as L
 import numpy as np
 import torch
 import torch.nn as nn
-from scipy.special import kv, kvp
+from scipy.special import kve, kvp
 from torch_geometric.nn.conv import GATv2Conv
 from torchmetrics import MeanSquaredError
 from torchmetrics.classification import MulticlassAccuracy
@@ -35,6 +35,7 @@ class LitGNNHetReg2dGAL(L.LightningModule):
         self.skip = torch.nn.Linear(input_dim, hidden_dim*n_heads)
         self.encoder = torch.nn.Sequential(torch.nn.Dropout(0.2), torch.nn.Linear(hidden_dim*n_heads, 20), torch.nn.LayerNorm(20))
 
+        self.spatial_loc_out = torch.nn.Sequential(torch.nn.Linear(21, 20), torch.nn.GELU(), torch.nn.Linear(20, 2))
         self.spatial_mu_out = torch.nn.Sequential(torch.nn.Linear(21, 20), torch.nn.GELU(), torch.nn.Linear(20, 2))
         self.spatial_l_out = torch.nn.Sequential(torch.nn.Linear(21, 20), torch.nn.GELU(), torch.nn.Linear(20, 3))
         self.label_out = torch.nn.Sequential(torch.nn.Linear(21, 20), torch.nn.GELU(), torch.nn.Linear(20, n_labels))
@@ -63,10 +64,11 @@ class LitGNNHetReg2dGAL(L.LightningModule):
         x = self.encoder(x)
 
         x = torch.cat([x, section_idx], dim=1)
+        xy_loc = self.spatial_loc_out(x)
         xy_mu = self.spatial_mu_out(x)
         xy_L = vec2mat_cholesky2d(self.spatial_l_out(x.detach()))
         celltype = self.label_out(x)
-        return xy_mu, xy_L, celltype
+        return xy_loc, xy_mu, xy_L, celltype
 
     def proc_batch(self, batch):
         # model specific processing of the batch.
@@ -86,10 +88,10 @@ class LitGNNHetReg2dGAL(L.LightningModule):
     def training_step(self, batch, batch_idx):
         # for GNN, batch size should be 1, and there isn't a batch dimension.
         gene_exp, edgelist, xy, section_idx, celltype = self.proc_batch(batch)
-        xy_mu_pred, xy_L_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
+        loc_pred, m_pred, L_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
 
         # Calculate losses
-        gal_nll_loss = self.loss_gal_nll2d(xy_mu_pred, xy_L_pred, xy)
+        gal_nll_loss = self.loss_gal_nll2d(loc_pred, m_pred, L_pred, xy)
         ce_loss = self.loss_ce(celltype_pred, celltype.squeeze())
         total_loss = self.weight_gal_nll * gal_nll_loss + self.weight_ce * ce_loss
 
@@ -99,10 +101,10 @@ class LitGNNHetReg2dGAL(L.LightningModule):
         self.log("train_total_loss", total_loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
 
         # Calculate metrics
-        train_metric_rmse_overall = self.metric_rmse_overall(xy_mu_pred, xy)
+        train_metric_rmse_overall = self.metric_rmse_overall(loc_pred, xy)
         train_overall_acc = self.metric_overall_acc(preds=celltype_pred, target=celltype.reshape(-1))
         train_macro_acc = self.metric_macro_acc(preds=celltype_pred, target=celltype.reshape(-1))
-        train_metric_rmse = self.metric_rmse(xy_mu_pred, xy)
+        train_metric_rmse = self.metric_rmse(loc_pred, xy)
 
         # Log metrics
         # fmt:off
@@ -124,11 +126,11 @@ class LitGNNHetReg2dGAL(L.LightningModule):
     def validation_step(self, batch, batch_idx):
         # for GNN, batch size should be 1, and there isn't a batch dimension.
         gene_exp, edgelist, xy, section_idx, celltype = self.proc_batch(batch)
-        xy_mu_pred, xy_L_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
+        loc_pred, m_pred, L_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
 
         # Calculate metrics
-        val_metric_rmse = self.metric_rmse(xy_mu_pred, xy)
-        val_metric_rmse_overall = self.metric_rmse_overall(xy_mu_pred, xy)
+        val_metric_rmse = self.metric_rmse(loc_pred, xy)
+        val_metric_rmse_overall = self.metric_rmse_overall(loc_pred, xy)
         val_overall_acc = self.metric_overall_acc(preds=celltype_pred, target=celltype.reshape(-1))
         val_macro_acc = self.metric_macro_acc(preds=celltype_pred, target=celltype.reshape(-1))
         val_metric_multiclass_acc = self.metric_multiclass_acc(preds=celltype_pred, target=celltype.reshape(-1))
@@ -144,10 +146,11 @@ class LitGNNHetReg2dGAL(L.LightningModule):
 
     def test_step(self, batch, batch_idx):
         gene_exp, edgelist, xy, section_idx, celltype = self.proc_batch(batch)
-        xy_mu_pred, xy_L_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
+        loc_pred, m_pred, L_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
         return (
-            xy_mu_pred.to("cpu").numpy(),
-            xy_L_pred.to("cpu").numpy(),
+            loc_pred.to("cpu").numpy(),
+            m_pred.to("cpu").numpy(),
+            L_pred.to("cpu").numpy(),
             celltype_pred.to("cpu").numpy(),
         )
 
@@ -156,13 +159,14 @@ class LitGNNHetReg2dGAL(L.LightningModule):
 
     def predict_step(self, batch, batch_idx):
         gene_exp, edgelist, xy, section_idx, celltype = self.proc_batch(batch)
-        xy_mu_pred, xy_L_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
+        loc_pred, m_pred, L_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
 
         # return only the last entry. This corresponds to idx passed to __getitem__.
-        xy_mu_pred = xy_mu_pred.to("cpu").numpy()[-1, :]
-        xy_L_pred = xy_L_pred.to("cpu").numpy()[-1, :]
+        loc_pred = loc_pred.to("cpu").numpy()[-1, :]
+        m_pred = m_pred.to("cpu").numpy()[-1, :]
+        L_pred = L_pred.to("cpu").numpy()[-1, :]
         celltype_pred = celltype_pred.to("cpu").numpy()[-1, :]
-        return xy_mu_pred, xy_L_pred, celltype_pred
+        return loc_pred, m_pred, L_pred, celltype_pred
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
@@ -191,10 +195,10 @@ def vec2mat_cholesky2d(l_vec):
     return L
 
 
-class Kv(torch.autograd.Function):
+class Kve(torch.autograd.Function):
     """
     Modified Bessel function of the second kind, using scipy under the hood.
-    Defining this operation allows to use Kv as a standard pytorch function within the model.
+    Allows use of Kve as a pytorch function.
 
     Args:
         v : float tensor, order of Bessel functions (also handles integer order)
@@ -204,45 +208,44 @@ class Kv(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, nu, input):
-        ctx.save_for_backward(nu, input)
-        input_cpu = input.cpu()
+    def forward(ctx, nu, z):
+        z_cpu = z.cpu()
         nu_cpu = nu.cpu()
-        out = kv(nu_cpu, input_cpu)
-        out = torch.as_tensor(out, dtype=input.dtype, device=input.device)
-        return out
+        kvez = torch.as_tensor(kve(nu_cpu, z_cpu), dtype=z.dtype, device=z.device)
+        ctx.save_for_backward(nu, z, kvez)
+        return kvez
 
     @staticmethod
     def backward(ctx, grad_output):
-        nu, input = ctx.saved_tensors
-        nu_cpu = nu.cpu()
-        input_cpu = input.cpu()
-        out = kvp(nu_cpu, input_cpu)
-        out = torch.as_tensor(out, dtype=input.dtype, device=input.device)
+        nu, z, kvez = ctx.saved_tensors
+        kvpz = torch.as_tensor(kvp(nu.cpu(), z.cpu()), dtype=z.dtype, device=z.device)
+        out = kvpz * torch.exp(z) + kvez
         return None, grad_output * out
 
 
 class GALNLLLoss2d(nn.Module):
-    def __init__(self, reduce=True, normalize=True):
+    def __init__(self, reduce=True):
         super(GALNLLLoss2d, self).__init__()
         self.reduce = reduce
-        self.normalize = normalize
         self.register_buffer("p", torch.as_tensor(2.0))
         self.register_buffer("nu", torch.as_tensor(1.0))  # (p-2)/2
 
-    def forward(self, m, L, x):
+    def forward(self, loc, m, L, x):
+        diff = x - loc
         Sinv = torch.cholesky_inverse(L)  # batch_size, 2, 2
         m_Sinv_m = torch.einsum("bi,bij,bj -> b", m, Sinv, m)
-        x_Sinv_x = torch.einsum("bi,bij,bj -> b", x, Sinv, x)
-        x_Sinv_m = torch.einsum("bi,bij,bj -> b", x, Sinv, m)
+        x_Sinv_x = torch.einsum("bi,bij,bj -> b", diff, Sinv, diff)
+        x_Sinv_m = torch.einsum("bi,bij,bj -> b", diff, Sinv, m)
+        z = torch.sqrt((2 + m_Sinv_m) * x_Sinv_x)
 
         log_prob = (
             math.log(2)
             + x_Sinv_m
-            - 0.5 * self.p * math.log(2 * PI)
-            - 0.5 * torch.logdet(Sinv)
+            - 0.5 * self.p * math.log(2 * math.pi)
+            + 0.5 * torch.logdet(Sinv)
             + 0.5 * self.nu * torch.log(x_Sinv_x / (2 + m_Sinv_m))
-            + torch.log(Kv.apply(self.nu, torch.sqrt((2 + m_Sinv_m) * x_Sinv_x)))
+            + torch.log(Kve.apply(self.nu, z))
+            - z
         )
 
         if self.reduce:
