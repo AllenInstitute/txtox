@@ -22,3 +22,12 @@ Data paths are in `config.toml` at the same location as `pyproject.toml`.
 ```toml
 data_root = "/txtox/data/" # replace with your own path
 ```
+
+### Development
+
+Handy commands for formatting etc.
+
+```bash
+ruff format <file-name>
+pre-commit run --all-files
+```
