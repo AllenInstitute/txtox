@@ -4,8 +4,11 @@ import anndata as ad
 import lightning as L
 import torch
 from torch.utils.data import ConcatDataset, DataLoader, random_split
+from torch_geometric.data import Data as PyGData
+from torch_geometric.loader.neighbor_loader import NeighborLoader
+from torch_geometric.transforms import NodePropertySplit, RandomNodeSplit
 
-from txtox.data.datasets import AnnDataDataset, AnnDataGraphDataset
+from txtox.data.datasets import AnnDataDataset, AnnDataGraphDataset, PyGAnnData
 from txtox.utils import get_paths
 
 
@@ -110,6 +113,93 @@ class AnnDataGraphDataModule(L.LightningDataModule):
         return DataLoader(self.data_predict, batch_size=self.batch_size, shuffle=False, pin_memory=True, num_workers=16)
 
 
+class PyGAnnDataGraphDataModule(L.LightningDataModule):
+    """
+    Data module using PyG functions to return graph patches.
+    """
+
+    def __init__(
+        self,
+        data_dir: None,
+        file_names: list[str] = ["VISp_nhood.h5ad"],
+        batch_size: int = 1,
+        n_hops: int = 2,
+        split_method: str = "rand",
+        cell_type: str = "subclass",
+        spatial_coords: list[str] = ["x_section", "y_section", "z_section"],
+    ):
+        super().__init__()
+        if data_dir is None:
+            data_dir = get_paths()["data_root"]
+        self.adata_paths = [str(data_dir) + file_name for file_name in file_names]
+        self.batch_size = batch_size
+        self.n_hops = n_hops
+        self.split_method = split_method
+        self.cell_type = cell_type
+        self.spatial_coords = spatial_coords
+
+    def node_mask(self, data):
+        if self.split_method == "rand":
+            random_node_split = RandomNodeSplit(split="train_rest", num_val=0.2, num_test=0.1, key=None)
+            data = random_node_split(data)
+        else:
+            # unused here - utility in classification settings.
+            node_property_split = NodePropertySplit(
+                property_name="popularity", ratios=[0.6, 0.1, 0.1, 0.1, 0.1], ascending=True
+            )
+            data = node_property_split(data)
+
+        return data
+
+    def setup(self, stage: str):
+        # including self.dataset for debugging.
+        # consider removing this if we run into cpu memory limits.
+        self.dataset = PyGAnnData(
+            self.adata_paths, cell_type=self.cell_type, spatial_coords=self.spatial_coords
+        )
+        self.data = self.node_mask(self.dataset.get_pygdata_obj())
+
+    def train_dataloader(self):
+        return NeighborLoader(
+            self.data,
+            num_neighbors=[-1] * self.n_hops,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=32,
+            input_nodes=self.data.train_mask,
+        )
+
+    def val_dataloader(self):
+        return NeighborLoader(
+            self.data,
+            input_nodes=self.data.val_mask,
+            num_neighbors=[-1] * self.n_hops,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=16,
+        )
+
+    def test_dataloader(self):
+        return NeighborLoader(
+            self.data,
+            input_nodes=self.data.test_mask,
+            num_neighbors=[-1] * self.n_hops,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=16,
+        )
+
+    def predict_dataloader(self):
+        return NeighborLoader(
+            self.data,
+            input_nodes=None,
+            num_neighbors=[-1] * self.n_hops,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=16,
+        )
+
+
 def test_anndatadatamodule():
     from txtox.data.datamodules import AnnDataDataModule
     from txtox.utils import get_paths
@@ -121,4 +211,48 @@ def test_anndatadatamodule():
     print(f"train: {len(datamodule.data_train)}")
     print(f"val: {len(datamodule.data_val)}")
     print(f"test: {len(datamodule.data_test)}")
+
+    print("anndatadatamodule checks passed")
     return datamodule
+
+
+def test_pyg_anndatagraphdatamodule():
+    import numpy as np
+
+    from txtox.data.datamodules import PyGAnnDataGraphDataModule
+    from txtox.utils import get_paths
+
+    path = get_paths()["data_root"]
+    datamodule = PyGAnnDataGraphDataModule(data_dir=path, file_names=["VISp_nhood.h5ad"], batch_size=1, n_hops=2)
+    datamodule.setup(stage="fit")
+    dataloader = iter(datamodule.train_dataloader())
+
+    for i in range(3):
+        batch = next(dataloader)
+
+        # 2-hop neighborhood from NeighborLoader:
+        nhood = batch.n_id.numpy()
+        nhood = list(set(nhood))
+        nhood.sort()
+
+        # calculate 2-hop neighborhood directly:
+        ref_cell = batch.input_id.numpy()  # cell index from which 2-hop neighborhood is calculated.
+        nhood_ = np.where(datamodule.dataset.adata.obsp["spatial_connectivities"][ref_cell, :].toarray())[1]
+        nhood_ = set(nhood_)
+        for i in nhood_:
+            ref_cell_nhood_2 = np.where(datamodule.dataset.adata.obsp["spatial_connectivities"][i, :].toarray())[1]
+            ref_cell_nhood_2 = set(ref_cell_nhood_2)
+            nhood_ = nhood_.union(ref_cell_nhood_2)
+        nhood_ = list(nhood_)
+        nhood_.sort()
+
+        assert len(set(nhood_) - set(nhood)) == 0, "Difference between ref_cell_nhood and nhood is not empty"
+
+    print("anndatagraphdatamodule checks passed")
+
+    return
+
+
+if __name__ == "__main__":
+    test_anndatadatamodule()
+    test_pyg_anndatagraphdatamodule()
