@@ -67,7 +67,7 @@ class LitGNNHetReg2dGAL(L.LightningModule):
         x = torch.cat([x, section_idx], dim=1)
         xy_loc = self.spatial_loc_out(x)
         xy_mu = self.spatial_mu_out(x)
-        xy_L = vec2mat_cholesky2d(self.spatial_l_out(x.detach()))
+        xy_L = vec2mat_cholesky2d(self.spatial_l_out(x))
         celltype = self.label_out(x)
         return xy_loc, xy_mu, xy_L, celltype
 
