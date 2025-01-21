@@ -14,7 +14,7 @@ def main():
 
     # paths
     paths = get_paths()
-    expname = get_datetime(expname="one_sec_hemi_nhood_GNNhetreg_GNLL2d_pyg_tests")
+    expname = get_datetime(expname="one_sec_hemi_nhood_GNNhetreg_GNLL2d_pyg")
     log_path = paths["data_root"] + f"logs/{expname}"
     checkpoint_path = paths["data_root"] + f"checkpoints/{expname}"
 
@@ -27,7 +27,7 @@ def main():
     # data
     datamodule = PyGAnnDataGraphDataModule(
         data_dir=paths["data_root"],
-        file_names=["VISp_nhood.h5ad"],
+        file_names=["test_one_section_hemi.h5ad"],
         cell_type="subclass",
         spatial_coords=["x_section", "y_section", "z_section"],
         batch_size=5,
