@@ -27,7 +27,7 @@ def main():
     # data
     datamodule = PyGAnnDataGraphDataModule(
         data_dir=paths["data_root"],
-        file_names=["VISp_nhood.h5ad"],
+        file_names=["test_one_section_hemi.h5ad"],
         cell_type="subclass",
         spatial_coords=["x_section", "y_section", "z_section"],
         batch_size=5,
@@ -41,7 +41,7 @@ def main():
     trainer = L.Trainer(
         limit_train_batches=1000,
         limit_val_batches=100,
-        max_epochs=1000,
+        max_epochs=200,
         logger=tb_logger,
         callbacks=[checkpoint_callback],
     )

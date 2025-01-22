@@ -69,7 +69,7 @@ class LitGNNHetReg2dGAL(L.LightningModule):
         xy_mu = self.spatial_mu_out(x)
         xy_L = vec2mat_cholesky2d(self.spatial_l_out(x))
         celltype = self.label_out(x)
-        return xy_loc, xy_mu, xy_L, celltype
+        return xy_loc, 0*xy_mu, xy_L, celltype
 
     def proc_batch(self, batch):
         # model specific processing of the batch.
@@ -99,6 +99,7 @@ class LitGNNHetReg2dGAL(L.LightningModule):
         gal_nll_loss = self.loss_gal_nll2d(loc_pred, m_pred, L_pred, xy)
         ce_loss = self.loss_ce(celltype_pred, celltype.squeeze())
         total_loss = self.weight_gal_nll * gal_nll_loss + self.weight_ce * ce_loss
+
 
         # Log losses
         self.log("train_gal_nll_loss", gal_nll_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
@@ -193,8 +194,26 @@ class LitGNNHetReg2dGAL(L.LightningModule):
         return loc_pred, m_pred, L_pred, celltype_pred
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
-        return optimizer
+        all_params = list(self.parameters())
+
+
+        # # Parameters for spatial_mu_out
+        # mu_params = self.spatial_mu_out.parameters()
+        # mu_optimizer = torch.optim.Adam(mu_params, lr=1e-3)
+
+        # # Parameters for spatial_l_out
+        # l_params = self.spatial_l_out.parameters()
+        # l_optimizer = torch.optim.Adam(l_params, lr=1e-3)
+
+        # # All other parameters
+        # other_params = [
+        #     p for n, p in self.named_parameters()
+        #     if not any(module in n for module in ['spatial_mu_out', 'spatial_l_out'])
+        # ]
+        main_optimizer = torch.optim.Adam(all_params, lr=1e-3)
+
+        # [main_optimizier, mu_optimizer, l_optimizer]
+        return main_optimizer
 
 
 def vec2mat_cholesky2d(l_vec):
@@ -244,6 +263,7 @@ class Kve(torch.autograd.Function):
         nu, z, kvez = ctx.saved_tensors
         kvpz = torch.as_tensor(kvp(nu.cpu(), z.cpu()), dtype=z.dtype, device=z.device)
         out = kvpz * torch.exp(z) + kvez
+        #out = kvpz * torch.clamp(torch.exp(z), 1, 10) + kvez <-- The backward pass is not the gradient anymore
         return None, grad_output * out
 
 
