@@ -2,10 +2,10 @@ import warnings
 
 import anndata as ad
 import numpy as np
-import scipy.sparse as sp
 import torch
 from anndata._core.aligned_df import ImplicitModificationWarning
 from scipy.sparse import issparse
+from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import LabelEncoder
 from torch.utils.data import Dataset
 from torch_geometric.data import Data as PyGData
@@ -177,7 +177,7 @@ def get_non_blank_genes(adata):
     return keep_genes
 
 
-class PyGAnnData():
+class PyGAnnData:
     """
     Class to preprocess and build the PyG Data object from AnnData dataset
 
@@ -200,6 +200,7 @@ class PyGAnnData():
         cell_type="supertype",
         max_order=2,
         d_threshold=1000,
+        rand_seed=42,
     ):
         super().__init__()
         self.paths = paths
@@ -247,6 +248,14 @@ class PyGAnnData():
         self.cell_type_labelencoder.fit(self.cell_type_list)
         self.data_issparse = issparse(adata.X)
 
+        # reproducible train/val/test split for crossvalidation 5 folds using StratifiedKFold
+        self.cv = 0
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
+        splits = skf.split(self.adata, self.adata.obs[self.cell_type])
+        splits = list(splits)
+        self.train_ind = splits[self.cv][0]
+        self.val_ind = splits[self.cv][1]
+
     def convert_torch_sparse_coo(self, adj):
         coo_matrix = adj.tocoo()
         indices = np.vstack((coo_matrix.row, coo_matrix.col))
@@ -277,7 +286,22 @@ class PyGAnnData():
 
         xyz = torch.tensor(self.adata.obs[self.spatial_coords].values).float()
 
-        return PyGData(gene_exp=gene_exp, edge_index=edgelist, xyz=xyz, celltype=celltype, num_nodes=gene_exp.shape[0])
+        # boolean mask for train/val/test
+        # first, define all false
+        train_mask = torch.zeros(self.adata.shape[0], dtype=torch.bool)
+        train_mask[self.train_ind] = True
+        val_mask = torch.zeros(self.adata.shape[0], dtype=torch.bool)
+        val_mask[self.val_ind] = True
+
+        return PyGData(
+            gene_exp=gene_exp,
+            edge_index=edgelist,
+            xyz=xyz,
+            celltype=celltype,
+            num_nodes=gene_exp.shape[0],
+            train_mask=train_mask,
+            val_mask=val_mask,
+        )
 
 
 def test_anndatadataset():
@@ -328,7 +352,7 @@ def test_pyganndata():
         max_order=2,
         d_threshold=1000,
     )
-    
+
     return pygdata
 
 

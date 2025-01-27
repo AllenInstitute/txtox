@@ -124,7 +124,7 @@ class PyGAnnDataGraphDataModule(L.LightningDataModule):
         file_names: list[str] = ["VISp_nhood.h5ad"],
         batch_size: int = 1,
         n_hops: int = 2,
-        split_method: str = "rand",
+        split_method: str = "pass",
         cell_type: str = "subclass",
         spatial_coords: list[str] = ["x_section", "y_section", "z_section"],
     ):
@@ -138,26 +138,11 @@ class PyGAnnDataGraphDataModule(L.LightningDataModule):
         self.cell_type = cell_type
         self.spatial_coords = spatial_coords
 
-    def node_mask(self, data):
-        if self.split_method == "rand":
-            random_node_split = RandomNodeSplit(split="train_rest", num_val=0.2, num_test=0.1, key=None)
-            data = random_node_split(data)
-        else:
-            # unused here - utility in classification settings.
-            node_property_split = NodePropertySplit(
-                property_name="popularity", ratios=[0.6, 0.1, 0.1, 0.1, 0.1], ascending=True
-            )
-            data = node_property_split(data)
-
-        return data
-
     def setup(self, stage: str):
         # including self.dataset for debugging.
         # consider removing this if we run into cpu memory limits.
-        self.dataset = PyGAnnData(
-            self.adata_paths, cell_type=self.cell_type, spatial_coords=self.spatial_coords
-        )
-        self.data = self.node_mask(self.dataset.get_pygdata_obj())
+        self.dataset = PyGAnnData(self.adata_paths, cell_type=self.cell_type, spatial_coords=self.spatial_coords)
+        self.data = self.dataset.get_pygdata_obj()
 
     def train_dataloader(self):
         return NeighborLoader(
@@ -173,16 +158,6 @@ class PyGAnnDataGraphDataModule(L.LightningDataModule):
         return NeighborLoader(
             self.data,
             input_nodes=self.data.val_mask,
-            num_neighbors=[-1] * self.n_hops,
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=16,
-        )
-
-    def test_dataloader(self):
-        return NeighborLoader(
-            self.data,
-            input_nodes=self.data.test_mask,
             num_neighbors=[-1] * self.n_hops,
             batch_size=self.batch_size,
             shuffle=False,
