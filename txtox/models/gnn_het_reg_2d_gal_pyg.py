@@ -6,6 +6,8 @@
 # GAL distribution parameters are only learnt for x and y dimensions.
 # Refs: 16_gal.ipynb, and Chapter 6 of Kotz et al. 2001.
 # PyG dataloaders: "minibatching" involves multiple input_nodes and their neighbors.
+# The strategy to avoid nans is to learn loc and L in the first stage, and mu as a second stage. 
+# The span of the brain is ~10.0. This informs choice of self.mu_abs_max.
 
 import math
 
@@ -20,15 +22,18 @@ from torchmetrics.classification import MulticlassAccuracy
 
 EULER_GAMMA = np.euler_gamma
 PI = np.pi
-
+torch.autograd.set_detect_anomaly(True)
 
 class LitGNNHetReg2dGAL(L.LightningModule):
-    def __init__(self, input_dim=500, hidden_dim=10, n_labels=126, weight_gal_nll=1.0, weight_ce=1.0):
+    def __init__(self, input_dim=500, hidden_dim=10, n_labels=126, weight_gal_nll=1.0, weight_ce=1.0, learn_mu=True):
         super(LitGNNHetReg2dGAL, self).__init__()
+        self.save_hyperparameters()
 
         self.weight_gal_nll = weight_gal_nll
         self.weight_ce = weight_ce
-
+        self.learn_mu = learn_mu
+        self.mu_abs_max = 5.0
+        
         # fmt:off
         n_heads = 5
         self.conv1 = GATv2Conv(input_dim, hidden_dim, heads=n_heads, concat=True)
@@ -37,7 +42,7 @@ class LitGNNHetReg2dGAL(L.LightningModule):
         self.encoder = torch.nn.Sequential(torch.nn.Dropout(0.2), torch.nn.Linear(hidden_dim*n_heads, 20), torch.nn.LayerNorm(20))
 
         self.spatial_loc_out = torch.nn.Sequential(torch.nn.Linear(21, 20), torch.nn.GELU(), torch.nn.Linear(20, 2))
-        self.spatial_mu_out = torch.nn.Sequential(torch.nn.Linear(21, 20), torch.nn.GELU(), torch.nn.Linear(20, 2))
+        self.spatial_mu_out = torch.nn.Sequential(torch.nn.Linear(21, 20), torch.nn.GELU(), torch.nn.Linear(20, 2), torch.nn.Sigmoid())
         self.spatial_l_out = torch.nn.Sequential(torch.nn.Linear(21, 20), torch.nn.GELU(), torch.nn.Linear(20, 3))
         self.label_out = torch.nn.Sequential(torch.nn.Linear(21, 20), torch.nn.GELU(), torch.nn.Linear(20, n_labels))
         self.gelu = torch.nn.GELU()
@@ -69,7 +74,11 @@ class LitGNNHetReg2dGAL(L.LightningModule):
         xy_mu = self.spatial_mu_out(x)
         xy_L = vec2mat_cholesky2d(self.spatial_l_out(x))
         celltype = self.label_out(x)
-        return xy_loc, 0*xy_mu, xy_L, celltype
+        if self.learn_mu:
+            return xy_loc, self.mu_abs_max*(2.0*xy_mu-1.0), xy_L, celltype
+        else:
+            return xy_loc, 0*xy_mu, xy_L, celltype
+
 
     def proc_batch(self, batch):
         # model specific processing of the batch.
@@ -195,24 +204,7 @@ class LitGNNHetReg2dGAL(L.LightningModule):
 
     def configure_optimizers(self):
         all_params = list(self.parameters())
-
-
-        # # Parameters for spatial_mu_out
-        # mu_params = self.spatial_mu_out.parameters()
-        # mu_optimizer = torch.optim.Adam(mu_params, lr=1e-3)
-
-        # # Parameters for spatial_l_out
-        # l_params = self.spatial_l_out.parameters()
-        # l_optimizer = torch.optim.Adam(l_params, lr=1e-3)
-
-        # # All other parameters
-        # other_params = [
-        #     p for n, p in self.named_parameters()
-        #     if not any(module in n for module in ['spatial_mu_out', 'spatial_l_out'])
-        # ]
         main_optimizer = torch.optim.Adam(all_params, lr=1e-3)
-
-        # [main_optimizier, mu_optimizer, l_optimizer]
         return main_optimizer
 
 
