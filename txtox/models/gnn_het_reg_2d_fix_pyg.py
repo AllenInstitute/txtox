@@ -3,7 +3,7 @@
 # In this version:
 # section coordinates are used.
 # z-section is provided as input.
-# Only x and y section coordinates are learned. 
+# Only x and y section coordinates are learned.
 # PyG dataloaders: "minibatching" involves multiple input_nodes and their neighbors.
 # loss + forward calculation is modified based on recommendation in Stirn et al. 2023 (equation 5)
 
@@ -85,18 +85,30 @@ class LitGNNHetRegGauss2d(L.LightningModule):
 
         # Training loss should be calculated for all nodes (including input_nodes and neighbors).
         # batch_size passed to NeighborLoader refers to the number of input_nodes only.
-        batch_size = batch.gene_exp.size(0) 
+        batch_size = batch.gene_exp.size(0)
 
         # Calculate losses
-        l2norm_loss = 0.5 * self.loss_l2norm(m_pred, xy)
-        gnll_loss = self.loss_gnll2d(m_pred, L_pred, xy)
-        ce_loss = self.loss_ce(celltype_pred, celltype.squeeze())
+        l2norm_loss = 0.5 * self.loss_l2norm(m_pred[batch["train_mask"]], xy[batch["train_mask"]])
+        gnll_loss = self.loss_gnll2d(m_pred[batch["train_mask"]], L_pred[batch["train_mask"]], xy[batch["train_mask"]])
+        ce_loss = self.loss_ce(celltype_pred[batch["train_mask"]], celltype[batch["train_mask"]].squeeze())
         total_loss = self.weight_gnll * l2norm_loss + self.weight_gnll * gnll_loss + self.weight_ce * ce_loss
 
         # Log losses
-        self.log("train_gnll_loss", gnll_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
-        self.log("train_ce_loss", ce_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
-        self.log("train_total_loss", total_loss, on_step=False, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
+        self.log(
+            "train_gnll_loss", gnll_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size
+        )
+        self.log(
+            "train_ce_loss", ce_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size
+        )
+        self.log(
+            "train_total_loss",
+            total_loss,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=batch_size,
+        )
 
         # Calculate metrics
         train_metric_rmse_overall = self.metric_rmse_overall(m_pred, xy)
@@ -126,7 +138,7 @@ class LitGNNHetRegGauss2d(L.LightningModule):
         gene_exp, edgelist, xy, section_idx, celltype = self.proc_batch(batch)
         m_pred, L_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
 
-        # Validation metrics should only be calculated for the input_nodes, 
+        # Validation metrics should only be calculated for the input_nodes,
         # and not their neighbors (which are allowed to be part of the training set)
         idx = torch.where(batch.n_id == batch.input_id.unsqueeze(-1))[0]
         batch_size = idx.shape[0]
@@ -143,7 +155,9 @@ class LitGNNHetRegGauss2d(L.LightningModule):
         ce_loss = self.loss_ce(celltype_pred_, celltype_.squeeze())
 
         # Log losses
-        self.log("val_gnll_loss", gnll_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
+        self.log(
+            "val_gnll_loss", gnll_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size
+        )
         self.log("val_ce_loss", ce_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
 
         # Calculate metrics
@@ -155,9 +169,33 @@ class LitGNNHetRegGauss2d(L.LightningModule):
 
         log_dict = {"val_x_rmse": val_metric_rmse[0], "val_y_rmse": val_metric_rmse[1]}
         self.log_dict(log_dict, on_step=False, on_epoch=True, prog_bar=False, logger=True, batch_size=batch_size)
-        self.log("val_rmse_overall", val_metric_rmse_overall, on_step=False, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
-        self.log("val_overall_acc", val_overall_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
-        self.log("val_macro_acc", val_macro_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
+        self.log(
+            "val_rmse_overall",
+            val_metric_rmse_overall,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=batch_size,
+        )
+        self.log(
+            "val_overall_acc",
+            val_overall_acc,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=batch_size,
+        )
+        self.log(
+            "val_macro_acc",
+            val_macro_acc,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=batch_size,
+        )
 
     def on_validation_epoch_end(self):
         pass
@@ -182,7 +220,7 @@ class LitGNNHetRegGauss2d(L.LightningModule):
         gene_exp, edgelist, xy, section_idx, celltype = self.proc_batch(batch)
         m_pred, L_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
 
-        # Validation metrics should only be calculated for the input_nodes, 
+        # Validation metrics should only be calculated for the input_nodes,
         # and not their neighbors (which are allowed to be part of the training set)
         idx = torch.where(batch.n_id == batch.input_id.unsqueeze(-1))[0]
         batch_size = idx.shape[0]
