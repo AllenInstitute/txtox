@@ -6,7 +6,7 @@
 # GAL distribution parameters are only learnt for x and y dimensions.
 # Refs: 16_gal.ipynb, and Chapter 6 of Kotz et al. 2001.
 # PyG dataloaders: "minibatching" involves multiple input_nodes and their neighbors.
-# The strategy to avoid nans is to learn loc and L in the first stage, and mu as a second stage. 
+# The strategy to avoid nans is to learn loc and L in the first stage, and mu as a second stage.
 # The span of the brain is ~10.0. This informs choice of self.mu_abs_max.
 
 import math
@@ -24,6 +24,7 @@ EULER_GAMMA = np.euler_gamma
 PI = np.pi
 torch.autograd.set_detect_anomaly(True)
 
+
 class LitGNNHetReg2dGAL(L.LightningModule):
     def __init__(self, input_dim=500, hidden_dim=10, n_labels=126, weight_gal_nll=1.0, weight_ce=1.0, learn_mu=True):
         super(LitGNNHetReg2dGAL, self).__init__()
@@ -33,7 +34,7 @@ class LitGNNHetReg2dGAL(L.LightningModule):
         self.weight_ce = weight_ce
         self.learn_mu = learn_mu
         self.mu_abs_max = 5.0
-        
+
         # fmt:off
         n_heads = 5
         self.conv1 = GATv2Conv(input_dim, hidden_dim, heads=n_heads, concat=True)
@@ -75,10 +76,9 @@ class LitGNNHetReg2dGAL(L.LightningModule):
         xy_L = vec2mat_cholesky2d(self.spatial_l_out(x))
         celltype = self.label_out(x)
         if self.learn_mu:
-            return xy_loc, self.mu_abs_max*(2.0*xy_mu-1.0), xy_L, celltype
+            return xy_loc, self.mu_abs_max * (2.0 * xy_mu - 1.0), xy_L, celltype
         else:
-            return xy_loc, 0*xy_mu, xy_L, celltype
-
+            return xy_loc, 0 * xy_mu, xy_L, celltype
 
     def proc_batch(self, batch):
         # model specific processing of the batch.
@@ -102,24 +102,50 @@ class LitGNNHetReg2dGAL(L.LightningModule):
 
         # Training loss should be calculated for all nodes (including input_nodes and neighbors).
         # batch_size passed to NeighborLoader refers to the number of input_nodes only.
-        batch_size = batch.gene_exp.size(0) 
+        batch_size = batch.gene_exp.size(0)
 
         # Calculate losses
-        gal_nll_loss = self.loss_gal_nll2d(loc_pred, m_pred, L_pred, xy)
-        ce_loss = self.loss_ce(celltype_pred, celltype.squeeze())
+        gal_nll_loss = self.loss_gal_nll2d(
+            loc_pred[batch["train_mask"]],
+            m_pred[batch["train_mask"]],
+            L_pred[batch["train_mask"]],
+            xy[batch["train_mask"]],
+        )
+        ce_loss = self.loss_ce(celltype_pred[batch["train_mask"]], celltype[batch["train_mask"]].squeeze())
         total_loss = self.weight_gal_nll * gal_nll_loss + self.weight_ce * ce_loss
 
-
         # Log losses
-        self.log("train_gal_nll_loss", gal_nll_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
-        self.log("train_ce_loss", ce_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
-        self.log("train_total_loss", total_loss, on_step=False, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
+        self.log(
+            "train_gal_nll_loss",
+            gal_nll_loss,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=batch_size,
+        )
+        self.log(
+            "train_ce_loss", ce_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size
+        )
+        self.log(
+            "train_total_loss",
+            total_loss,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=batch_size,
+        )
 
         # Calculate metrics
-        train_metric_rmse_overall = self.metric_rmse_overall(loc_pred, xy)
-        train_overall_acc = self.metric_overall_acc(preds=celltype_pred, target=celltype.reshape(-1))
-        train_macro_acc = self.metric_macro_acc(preds=celltype_pred, target=celltype.reshape(-1))
-        train_metric_rmse = self.metric_rmse(loc_pred, xy)
+        train_metric_rmse_overall = self.metric_rmse_overall(loc_pred[batch["train_mask"]], xy[batch["train_mask"]])
+        train_overall_acc = self.metric_overall_acc(
+            preds=celltype_pred[batch["train_mask"]], target=celltype[batch["train_mask"]].reshape(-1)
+        )
+        train_macro_acc = self.metric_macro_acc(
+            preds=celltype_pred[batch["train_mask"]], target=celltype[batch["train_mask"]].reshape(-1)
+        )
+        train_metric_rmse = self.metric_rmse(loc_pred[batch["train_mask"]], xy[batch["train_mask"]])
 
         # Log metrics
         # fmt:off
@@ -143,7 +169,7 @@ class LitGNNHetReg2dGAL(L.LightningModule):
         gene_exp, edgelist, xy, section_idx, celltype = self.proc_batch(batch)
         loc_pred, m_pred, L_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
 
-        # Validation metrics should only be calculated for the input_nodes, 
+        # Validation metrics should only be calculated for the input_nodes,
         # and not their neighbors (which are allowed to be part of the training set)
         idx = torch.where(batch.n_id == batch.input_id.unsqueeze(-1))[0]
         batch_size = idx.shape[0]
@@ -163,9 +189,33 @@ class LitGNNHetReg2dGAL(L.LightningModule):
 
         log_dict = {"val_x_rmse": val_metric_rmse[0], "val_y_rmse": val_metric_rmse[1]}
         self.log_dict(log_dict, on_step=False, on_epoch=True, prog_bar=False, logger=True, batch_size=batch_size)
-        self.log("val_rmse_overall", val_metric_rmse_overall, on_step=False, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
-        self.log("val_overall_acc", val_overall_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
-        self.log("val_macro_acc", val_macro_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
+        self.log(
+            "val_rmse_overall",
+            val_metric_rmse_overall,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=batch_size,
+        )
+        self.log(
+            "val_overall_acc",
+            val_overall_acc,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=batch_size,
+        )
+        self.log(
+            "val_macro_acc",
+            val_macro_acc,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=batch_size,
+        )
 
     def on_validation_epoch_end(self):
         pass
@@ -191,7 +241,7 @@ class LitGNNHetReg2dGAL(L.LightningModule):
         gene_exp, edgelist, xy, section_idx, celltype = self.proc_batch(batch)
         loc_pred, m_pred, L_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
 
-        # Validation metrics should only be calculated for the input_nodes, 
+        # Validation metrics should only be calculated for the input_nodes,
         # and not their neighbors (which are allowed to be part of the training set)
         idx = torch.where(batch.n_id == batch.input_id.unsqueeze(-1))[0]
         batch_size = idx.shape[0]
@@ -255,7 +305,7 @@ class Kve(torch.autograd.Function):
         nu, z, kvez = ctx.saved_tensors
         kvpz = torch.as_tensor(kvp(nu.cpu(), z.cpu()), dtype=z.dtype, device=z.device)
         out = kvpz * torch.exp(z) + kvez
-        #out = kvpz * torch.clamp(torch.exp(z), 1, 10) + kvez <-- The backward pass is not the gradient anymore
+        # out = kvpz * torch.clamp(torch.exp(z), 1, 10) + kvez <-- The backward pass is not the gradient anymore
         return None, grad_output * out
 
 

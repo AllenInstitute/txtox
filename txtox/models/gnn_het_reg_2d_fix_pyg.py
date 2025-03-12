@@ -111,10 +111,14 @@ class LitGNNHetRegGauss2d(L.LightningModule):
         )
 
         # Calculate metrics
-        train_metric_rmse_overall = self.metric_rmse_overall(m_pred, xy)
-        train_overall_acc = self.metric_overall_acc(preds=celltype_pred, target=celltype.reshape(-1))
-        train_macro_acc = self.metric_macro_acc(preds=celltype_pred, target=celltype.reshape(-1))
-        train_metric_rmse = self.metric_rmse(m_pred, xy)
+        train_metric_rmse_overall = self.metric_rmse_overall(m_pred[batch["train_mask"]], xy[batch["train_mask"]])
+        train_overall_acc = self.metric_overall_acc(
+            preds=celltype_pred[batch["train_mask"]], target=celltype[batch["train_mask"]].reshape(-1)
+        )
+        train_macro_acc = self.metric_macro_acc(
+            preds=celltype_pred[batch["train_mask"]], target=celltype[batch["train_mask"]].reshape(-1)
+        )
+        train_metric_rmse = self.metric_rmse(m_pred[batch["train_mask"]], xy[batch["train_mask"]])
 
         # Log metrics
         # fmt:off
