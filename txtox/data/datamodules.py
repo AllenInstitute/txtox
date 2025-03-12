@@ -127,6 +127,7 @@ class PyGAnnDataGraphDataModule(L.LightningDataModule):
         split_method: str = "pass",
         cell_type: str = "subclass",
         spatial_coords: list[str] = ["x_section", "y_section", "z_section"],
+        d_threshold: float = 1e7,
     ):
         super().__init__()
         if data_dir is None:
@@ -137,11 +138,14 @@ class PyGAnnDataGraphDataModule(L.LightningDataModule):
         self.split_method = split_method
         self.cell_type = cell_type
         self.spatial_coords = spatial_coords
+        self.d_threshold = d_threshold
 
     def setup(self, stage: str):
         # including self.dataset for debugging.
         # consider removing this if we run into cpu memory limits.
-        self.dataset = PyGAnnData(self.adata_paths, cell_type=self.cell_type, spatial_coords=self.spatial_coords)
+        self.dataset = PyGAnnData(
+            self.adata_paths, cell_type=self.cell_type, spatial_coords=self.spatial_coords, d_threshold=self.d_threshold
+        )
         self.data = self.dataset.get_pygdata_obj()
 
     def train_dataloader(self):
