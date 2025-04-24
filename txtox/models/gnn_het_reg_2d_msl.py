@@ -240,7 +240,7 @@ class MultivariateSkewLaplaceNLLLoss2d(nn.Module):
         sigma_inv = torch.cholesky_inverse(L)  # batch_size, 2, 2
         alpha = torch.sqrt(1 + torch.einsum("bi,bij,bj -> b", gamma, sigma_inv, gamma))  # batch_size,
         diff = x - mu  # batch_size, 2
-        root_exp = torch.einsum("bi,bij,bj->b", diff, sigma_inv, diff).sqrt()
+        root_exp = (torch.einsum("bi,bij,bj->b", diff, sigma_inv, diff) + 1e-8).sqrt()
         add_exp = torch.einsum("bi,bij,bj-> b", diff, sigma_inv, gamma)
         constants = 0.5 * torch.logdet(sigma_inv) - torch.log(alpha)
         if self.normalize:
