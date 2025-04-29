@@ -73,7 +73,7 @@ class LitGNNHetReg2dMSL(L.LightningModule):
     def proc_batch(self, batch):
         # model specific processing of the batch.
 
-        gene_exp, edgelist, xyz, celltype = batch
+        gene_exp, edgelist, xyz, celltype = batch.gene_exp, batch.edge_index.T, batch.xyz, batch.celltype
         gene_exp = gene_exp.squeeze(dim=0)
         edgelist = edgelist.squeeze(dim=0).T
         xyz = xyz.squeeze(dim=0)
@@ -90,33 +90,45 @@ class LitGNNHetReg2dMSL(L.LightningModule):
         gene_exp, edgelist, xy, section_idx, celltype = self.proc_batch(batch)
         xy_mu_pred, xy_L_pred, xy_gamma_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
 
+        # Training loss should be calculated for all nodes (including input_nodes and neighbors).
+        # batch_size passed to NeighborLoader refers to the number of input_nodes only.
+        batch_size = batch.gene_exp.size(0)
+
         # Calculate losses
-        msl_nll_loss = self.loss_msl_nll2d(xy_mu_pred, xy_L_pred, xy_gamma_pred, xy)
-        ce_loss = self.loss_ce(celltype_pred, celltype.squeeze())
+        msl_nll_loss = self.loss_msl_nll2d(
+            xy_mu_pred[batch["train_mask"]],
+            xy_L_pred[batch["train_mask"]],
+            xy_gamma_pred[batch["train_mask"]],
+            xy[batch["train_mask"]],
+        )
+        ce_loss = self.loss_ce(celltype_pred[batch["train_mask"]], celltype[batch["train_mask"]].squeeze())
         total_loss = self.weight_msl_nll * msl_nll_loss + self.weight_ce * ce_loss
 
         # Log losses
-        self.log("train_msl_nll_loss", msl_nll_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        self.log("train_ce_loss", ce_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        self.log("train_total_loss", total_loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        log_config = dict(on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
+        self.log("train_msl_nll_loss", msl_nll_loss, **log_config)
+        self.log("train_ce_loss", ce_loss, on_step=True, **log_config)
+        self.log("train_total_loss", total_loss, on_step=False, **log_config)
 
         # Calculate metrics
-        train_metric_rmse_overall = self.metric_rmse_overall(xy_mu_pred, xy)
-        train_overall_acc = self.metric_overall_acc(preds=celltype_pred, target=celltype.reshape(-1))
-        train_macro_acc = self.metric_macro_acc(preds=celltype_pred, target=celltype.reshape(-1))
-        train_metric_rmse = self.metric_rmse(xy_mu_pred, xy)
+        _pred = celltype_pred[batch["train_mask"]]
+        _target = celltype[batch["train_mask"]].reshape(-1)
+        train_overall_acc = self.metric_overall_acc(preds=_pred, target=_target)
+        train_macro_acc = self.metric_macro_acc(preds=_pred, target=_target)
+        train_metric_rmse_overall = self.metric_rmse_overall(xy_mu_pred[batch["train_mask"]], xy[batch["train_mask"]])
+        train_metric_rmse = self.metric_rmse(xy_mu_pred[batch["train_mask"]], xy[batch["train_mask"]])
 
         # Log metrics
         # fmt:off
-        self.log("train_rmse_overall", train_metric_rmse_overall, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log("train_overall_acc", train_overall_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log("train_macro_acc", train_macro_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log("train_rmse_overall", train_metric_rmse_overall, on_step=False, **log_config)
+        self.log("train_overall_acc", train_overall_acc, on_step=False, **log_config)
+        self.log("train_macro_acc", train_macro_acc, on_step=False, **log_config)
         log_dict = {
             "train_x_rmse": train_metric_rmse[0],
             "train_y_rmse": train_metric_rmse[1]
         }
         # fmt:on
-        self.log_dict(log_dict, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        self.log_dict(log_dict, on_step=False, on_epoch=True, prog_bar=False, logger=True, batch_size=batch_size)
 
         return total_loss
 
@@ -128,18 +140,32 @@ class LitGNNHetReg2dMSL(L.LightningModule):
         gene_exp, edgelist, xy, section_idx, celltype = self.proc_batch(batch)
         xy_mu_pred, xy_L_pred, xy_gamma_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
 
-        # Calculate metrics
-        val_metric_rmse = self.metric_rmse(xy_mu_pred, xy)
-        val_metric_rmse_overall = self.metric_rmse_overall(xy_mu_pred, xy)
-        val_overall_acc = self.metric_overall_acc(preds=celltype_pred, target=celltype.reshape(-1))
-        val_macro_acc = self.metric_macro_acc(preds=celltype_pred, target=celltype.reshape(-1))
-        val_metric_multiclass_acc = self.metric_multiclass_acc(preds=celltype_pred, target=celltype.reshape(-1))
+        # Validation metrics should only be calculated for the input_nodes,
+        # and not their neighbors (which are allowed to be part of the training set)
+        idx = torch.where(batch.n_id == batch.input_id.unsqueeze(-1))[0]
+        batch_size = idx.shape[0]
 
+        # slice the data for metrics not calculated for neighbors.
+        xy_ = xy[idx]
+        celltype_ = celltype[idx]
+        xy_mu_pred_ = xy_mu_pred[idx]
+        xy_L_pred_ = xy_L_pred[idx]
+        xy_gamma_pred_ = xy_gamma_pred[idx]
+        celltype_pred_ = celltype_pred[idx]
+
+        # Calculate metrics
+        val_metric_rmse = self.metric_rmse(xy_mu_pred_, xy_)
+        val_metric_rmse_overall = self.metric_rmse_overall(xy_mu_pred_, xy_)
+        val_overall_acc = self.metric_overall_acc(preds=celltype_pred_, target=celltype_.reshape(-1))
+        val_macro_acc = self.metric_macro_acc(preds=celltype_pred_, target=celltype_.reshape(-1))
+        val_metric_multiclass_acc = self.metric_multiclass_acc(preds=celltype_pred_, target=celltype_.reshape(-1))
+
+        log_config = dict(on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
         log_dict = {"val_x_rmse": val_metric_rmse[0], "val_y_rmse": val_metric_rmse[1]}
-        self.log_dict(log_dict, on_step=False, on_epoch=True, prog_bar=False, logger=True)
-        self.log("val_rmse_overall", val_metric_rmse_overall, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log("val_overall_acc", val_overall_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log("val_macro_acc", val_macro_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log_dict(log_dict, on_step=False, on_epoch=True, prog_bar=False, logger=True, batch_size=batch_size)
+        self.log("val_rmse_overall", val_metric_rmse_overall, on_step=False, **log_config)
+        self.log("val_overall_acc", val_overall_acc, on_step=False, **log_config)
+        self.log("val_macro_acc", val_macro_acc, on_step=False, **log_config)
 
     def on_validation_epoch_end(self):
         pass
@@ -161,10 +187,14 @@ class LitGNNHetReg2dMSL(L.LightningModule):
         gene_exp, edgelist, xy, section_idx, celltype = self.proc_batch(batch)
         xy_mu_pred, xy_L_pred, xy_gamma_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
 
-        # return only the last entry. This corresponds to idx passed to __getitem__.
-        xy_mu_pred = xy_mu_pred.to("cpu").numpy()[-1, :]
-        xy_L_pred = xy_L_pred.to("cpu").numpy()[-1, :]
-        celltype_pred = celltype_pred.to("cpu").numpy()[-1, :]
+        # Validation metrics should only be calculated for the input_nodes,
+        # and not their neighbors (which are allowed to be part of the training set)
+        idx = torch.where(batch.n_id == batch.input_id.unsqueeze(-1))[0]
+        batch_size = idx.shape[0]
+
+        xy_mu_pred = xy_mu_pred[idx].to("cpu").numpy()
+        xy_L_pred = xy_L_pred[idx].to("cpu").numpy()
+        celltype_pred = celltype_pred[idx].to("cpu").numpy()
         return xy_mu_pred, xy_L_pred, xy_gamma_pred, celltype_pred
 
     def configure_optimizers(self):
