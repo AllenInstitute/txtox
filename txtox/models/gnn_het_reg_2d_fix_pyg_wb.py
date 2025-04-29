@@ -58,6 +58,7 @@ class LitGNNHetRegGauss2d(L.LightningModule):
         x = self.skip(x) + y
         x = self.encoder(x)
 
+        # concatenate section_idx to the input representation
         x = torch.cat([x, section_idx], dim=1)
         xy_mu = self.spatial_mu_out(x)
         xy_L = vec2mat_cholesky2d(self.spatial_l_out(x.detach()))
