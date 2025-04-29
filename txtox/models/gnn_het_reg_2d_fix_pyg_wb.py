@@ -96,21 +96,10 @@ class LitGNNHetRegGauss2d(L.LightningModule):
         total_loss = self.weight_gnll * l2norm_loss + self.weight_gnll * gnll_loss + self.weight_ce * ce_loss
 
         # Log losses
-        self.log(
-            "train_gnll_loss", gnll_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size
-        )
-        self.log(
-            "train_ce_loss", ce_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size
-        )
-        self.log(
-            "train_total_loss",
-            total_loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            batch_size=batch_size,
-        )
+        log_config = dict(on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
+        self.log("train_gnll_loss", gnll_loss, on_step=True, **log_config)
+        self.log("train_ce_loss", ce_loss, on_step=True, **log_config)
+        self.log("train_total_loss", total_loss, on_step=False, **log_config)
 
         # Calculate metrics
         train_metric_rmse_overall = self.metric_rmse_overall(m_pred[batch["train_mask"]], xy[batch["train_mask"]])
@@ -124,9 +113,9 @@ class LitGNNHetRegGauss2d(L.LightningModule):
 
         # Log metrics
         # fmt:off
-        self.log("train_rmse_overall", train_metric_rmse_overall, on_step=False, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
-        self.log("train_overall_acc", train_overall_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
-        self.log("train_macro_acc", train_macro_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
+        self.log("train_rmse_overall", train_metric_rmse_overall, on_step=False, **log_config)
+        self.log("train_overall_acc", train_overall_acc, on_step=False, **log_config)
+        self.log("train_macro_acc", train_macro_acc, on_step=False, **log_config)
         log_dict = {
             "train_x_rmse": train_metric_rmse[0],
             "train_y_rmse": train_metric_rmse[1]
@@ -161,10 +150,9 @@ class LitGNNHetRegGauss2d(L.LightningModule):
         ce_loss = self.loss_ce(celltype_pred_, celltype_.squeeze())
 
         # Log losses
-        self.log(
-            "val_gnll_loss", gnll_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size
-        )
-        self.log("val_ce_loss", ce_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
+        log_config = dict(on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
+        self.log("val_gnll_loss", gnll_loss, on_step=True, **log_config)
+        self.log("val_ce_loss", ce_loss, on_step=True, **log_config)
 
         # Calculate metrics
         val_metric_rmse = self.metric_rmse(m_pred_, xy_)
@@ -175,33 +163,9 @@ class LitGNNHetRegGauss2d(L.LightningModule):
 
         log_dict = {"val_x_rmse": val_metric_rmse[0], "val_y_rmse": val_metric_rmse[1]}
         self.log_dict(log_dict, on_step=False, on_epoch=True, prog_bar=False, logger=True, batch_size=batch_size)
-        self.log(
-            "val_rmse_overall",
-            val_metric_rmse_overall,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            batch_size=batch_size,
-        )
-        self.log(
-            "val_overall_acc",
-            val_overall_acc,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            batch_size=batch_size,
-        )
-        self.log(
-            "val_macro_acc",
-            val_macro_acc,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            batch_size=batch_size,
-        )
+        self.log("val_rmse_overall", val_metric_rmse_overall, on_step=False, **log_config)
+        self.log("val_overall_acc", val_overall_acc, on_step=False, **log_config)
+        self.log("val_macro_acc", val_macro_acc, on_step=False, **log_config)
 
     def on_validation_epoch_end(self):
         pass
