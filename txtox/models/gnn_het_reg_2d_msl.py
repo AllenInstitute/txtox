@@ -194,6 +194,7 @@ class LitGNNHetReg2dMSL(L.LightningModule):
 
         xy_mu_pred = xy_mu_pred[idx].to("cpu").numpy()
         xy_L_pred = xy_L_pred[idx].to("cpu").numpy()
+        xy_gamma_pred = xy_gamma_pred[idx].to("cpu").numpy()
         celltype_pred = celltype_pred[idx].to("cpu").numpy()
         return xy_mu_pred, xy_L_pred, xy_gamma_pred, celltype_pred
 
