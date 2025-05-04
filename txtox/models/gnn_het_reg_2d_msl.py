@@ -225,37 +225,6 @@ def vec2mat_cholesky2d(l_vec):
     return L
 
 
-class GaussianNLLLoss2d(nn.Module):
-    def __init__(self, reduce=True):
-        super(GaussianNLLLoss2d, self).__init__()
-        self.reduce = reduce
-
-    def forward(self, mu, L, x):
-        diff = (x - mu).unsqueeze(-1)  # (batch_size, 2, 1)
-        z = torch.cholesky_solve(diff, L, upper=False)  # (batch_size, 2, 1)
-        quadratic = torch.bmm(diff.transpose(1, 2), z).squeeze()  # (batch_size, )
-        log_det = 2.0 * torch.sum(torch.log(torch.diagonal(L, dim1=1, dim2=2)), dim=1)  # (batch_size, )
-        nll = 0.5 * (quadratic + log_det + 2 * torch.log(torch.tensor(2 * torch.pi)))  # (batch_size, )
-        if self.reduce:
-            return torch.mean(nll)
-        else:
-            return nll
-
-
-class L2NormLoss(nn.Module):
-    def __init__(self, reduce=True):
-        super(L2NormLoss, self).__init__()
-        self.reduce = reduce
-
-    def forward(self, mu, x):
-        diff = x - mu  # (batch_size, 2)
-        l2_norm = torch.sum(diff * diff, dim=1)  # (batch_size, x_dim)
-        if self.reduce:
-            return torch.mean(l2_norm)
-        else:
-            return l2_norm
-
-
 class MultivariateSkewLaplaceNLLLoss2d(nn.Module):
     def __init__(self, reduce=True, normalize=True):
         super(MultivariateSkewLaplaceNLLLoss2d, self).__init__()
