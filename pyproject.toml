@@ -31,7 +31,9 @@ dependencies = [
     "jupyterlab",
     "ipywidgets",
     "toml",
-    "anndata"]
+    "anndata",
+    "watermark", 
+    "fire"]
 
 [project.optional-dependencies]
 
