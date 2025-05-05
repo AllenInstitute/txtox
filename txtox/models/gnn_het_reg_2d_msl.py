@@ -21,9 +21,10 @@ PI = np.pi
 
 
 class LitGNNHetReg2dMSL(L.LightningModule):
-    def __init__(self, input_dim=500, hidden_dim=10, n_labels=126, weight_msl_nll=1.0, weight_ce=1.0):
+    def __init__(self, input_dim=500, hidden_dim=10, n_labels=126, weight_msl_nll=1.0, weight_ce=1.0, zero_gamma=False):
         super(LitGNNHetReg2dMSL, self).__init__()
 
+        self.zero_gamma = zero_gamma
         self.weight_msl_nll = weight_msl_nll
         self.weight_ce = weight_ce
 
@@ -41,7 +42,6 @@ class LitGNNHetReg2dMSL(L.LightningModule):
         self.gelu = torch.nn.GELU()
 
         # losses
-        self.loss_l2norm = L2NormLoss()
         self.loss_msl_nll2d = MultivariateSkewLaplaceNLLLoss2d()
         self.loss_ce = nn.CrossEntropyLoss()
 
@@ -68,6 +68,9 @@ class LitGNNHetReg2dMSL(L.LightningModule):
         xy_L = vec2mat_cholesky2d(self.spatial_l_out(x.detach()))
         xy_gamma = self.spatial_gamma_out(x)
         celltype = self.label_out(x)
+        if self.zero_gamma:
+            xy_gamma = xy_gamma.detach()
+            xy_gamma = torch.zeros_like(xy_gamma)
         return xy_mu, xy_L, xy_gamma, celltype
 
     def proc_batch(self, batch):
