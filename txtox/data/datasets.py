@@ -234,7 +234,7 @@ class PyGAnnData:
         self.d_threshold = d_threshold
 
         # create binary adjacency matrix without self-loops
-        adj = self.adata.obsp["spatial_connectivities"].copy()
+        adj = self.adata.obsp["spatial_distances"].copy()
         adj = adj.astype(bool).astype(int)
         # this is an extra precaution to prevent far connections.
         adj[self.adata.obsp["spatial_distances"] > self.d_threshold] = 0
