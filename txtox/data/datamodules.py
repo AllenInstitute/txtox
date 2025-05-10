@@ -128,6 +128,7 @@ class PyGAnnDataGraphDataModule(L.LightningDataModule):
         cell_type: str = "subclass",
         spatial_coords: list[str] = ["x_section", "y_section", "z_section"],
         d_threshold: float = 1e7,
+        num_workers: int = 16,
     ):
         super().__init__()
         if data_dir is None:
@@ -139,6 +140,7 @@ class PyGAnnDataGraphDataModule(L.LightningDataModule):
         self.cell_type = cell_type
         self.spatial_coords = spatial_coords
         self.d_threshold = d_threshold
+        self.num_workers = num_workers
 
     def setup(self, stage: str):
         # including self.dataset for debugging.
@@ -154,7 +156,7 @@ class PyGAnnDataGraphDataModule(L.LightningDataModule):
             num_neighbors=[-1] * self.n_hops,
             batch_size=self.batch_size,
             shuffle=True,
-            num_workers=32,
+            num_workers=self.num_workers,
             input_nodes=self.data.train_mask,
         )
 
@@ -165,7 +167,7 @@ class PyGAnnDataGraphDataModule(L.LightningDataModule):
             num_neighbors=[-1] * self.n_hops,
             batch_size=self.batch_size,
             shuffle=False,
-            num_workers=16,
+            num_workers=self.num_workers,
         )
 
     def predict_dataloader(self):
@@ -175,7 +177,7 @@ class PyGAnnDataGraphDataModule(L.LightningDataModule):
             num_neighbors=[-1] * self.n_hops,
             batch_size=self.batch_size,
             shuffle=False,
-            num_workers=16,
+            num_workers=self.num_workers,
         )
 
 
