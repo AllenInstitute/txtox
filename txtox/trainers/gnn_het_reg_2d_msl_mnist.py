@@ -22,7 +22,7 @@ def main(expname: str, max_epochs: int, skew: int, load_ckpt_path: str):
 
     skew = skew > 0  # turn into boolean
     n_genes = 784
-    n_labels = 10  
+    n_labels = 10
 
     # paths
     paths = get_paths()
@@ -43,6 +43,7 @@ def main(expname: str, max_epochs: int, skew: int, load_ckpt_path: str):
         cell_type="subclass",
         spatial_coords=["x_section", "y_section", "z_section"],
         batch_size=5,
+        val_batch_size=50,
         n_hops=2,
         num_workers=8,
     )
@@ -79,9 +80,8 @@ def main(expname: str, max_epochs: int, skew: int, load_ckpt_path: str):
     trainer.fit(model=model, datamodule=datamodule)
 
     # save model at the end of training
-    model.save_model(checkpoint_path + f"end-epoch-{max_epochs}.ckpt")
+    trainer.save_checkpoint(checkpoint_path + f"end-epoch-{max_epochs}.ckpt")
+
 
 if __name__ == "__main__":
-    main(
-        expname=args.expname, max_epochs=args.max_epochs, load_ckpt_path=args.load_ckpt_path, skew=args.skew
-    )
+    main(expname=args.expname, max_epochs=args.max_epochs, load_ckpt_path=args.load_ckpt_path, skew=args.skew)

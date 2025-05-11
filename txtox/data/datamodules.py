@@ -123,6 +123,7 @@ class PyGAnnDataGraphDataModule(L.LightningDataModule):
         data_dir: None,
         file_names: list[str] = ["VISp_nhood.h5ad"],
         batch_size: int = 1,
+        val_batch_size: int | None = None,
         n_hops: int = 2,
         split_method: str = "pass",
         cell_type: str = "subclass",
@@ -135,6 +136,7 @@ class PyGAnnDataGraphDataModule(L.LightningDataModule):
             data_dir = get_paths()["data_root"]
         self.adata_paths = [str(data_dir) + file_name for file_name in file_names]
         self.batch_size = batch_size
+        self.val_batch_size = val_batch_size if val_batch_size is not None else batch_size
         self.n_hops = n_hops
         self.split_method = split_method
         self.cell_type = cell_type
@@ -165,7 +167,7 @@ class PyGAnnDataGraphDataModule(L.LightningDataModule):
             self.data,
             input_nodes=self.data.val_mask,
             num_neighbors=[-1] * self.n_hops,
-            batch_size=self.batch_size,
+            batch_size=self.val_batch_size,
             shuffle=False,
             num_workers=self.num_workers,
         )
