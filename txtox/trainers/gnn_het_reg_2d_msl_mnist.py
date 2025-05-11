@@ -80,7 +80,7 @@ def main(expname: str, max_epochs: int, skew: int, load_ckpt_path: str):
     trainer.fit(model=model, datamodule=datamodule)
 
     # save model at the end of training
-    trainer.save_checkpoint(checkpoint_path + f"end-epoch-{max_epochs}.ckpt")
+    trainer.save_checkpoint(checkpoint_path + f"/end-epoch-{max_epochs}.ckpt")
 
 
 if __name__ == "__main__":
