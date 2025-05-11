@@ -12,15 +12,15 @@ from txtox.utils import get_datetime, get_paths
 parser = argparse.ArgumentParser(description="Training config")
 parser.add_argument("--expname", type=str, default="debug_msl")
 parser.add_argument("--max_epochs", type=int, default=10)
-parser.add_argument("--zero_gamma", type=int, default=0)
+parser.add_argument("--skew", type=int, default=0)
 parser.add_argument("--load_ckpt_path", type=str, default=None)
 args = parser.parse_args()
 
 
-def main(expname: str, max_epochs: int, zero_gamma: int, load_ckpt_path: str):
+def main(expname: str, max_epochs: int, skew: int, load_ckpt_path: str):
     # data parameters, we'll eventually obtain this from the data.
 
-    zero_gamma = zero_gamma > 0  # turn into boolean
+    skew = skew > 0  # turn into boolean
     n_genes = 784
     n_labels = 10  
 
@@ -42,8 +42,9 @@ def main(expname: str, max_epochs: int, zero_gamma: int, load_ckpt_path: str):
         file_names=["mnist.h5ad"],
         cell_type="subclass",
         spatial_coords=["x_section", "y_section", "z_section"],
-        batch_size=50,
+        batch_size=5,
         n_hops=2,
+        num_workers=8,
     )
 
     # model
@@ -54,8 +55,8 @@ def main(expname: str, max_epochs: int, zero_gamma: int, load_ckpt_path: str):
             input_dim=n_genes,
             n_labels=n_labels,
             weight_msl_nll=1.0,
-            weight_ce=0.1,
-            zero_gamma=zero_gamma,
+            weight_ce=0.0,
+            skew=skew,
         )
         print(f"Loaded checkpoint: {load_ckpt_path}")
     else:
@@ -63,14 +64,13 @@ def main(expname: str, max_epochs: int, zero_gamma: int, load_ckpt_path: str):
             input_dim=n_genes,
             n_labels=n_labels,
             weight_msl_nll=1.0,
-            weight_ce=0.1,
-            zero_gamma=zero_gamma,
+            weight_ce=0.0,
+            skew=skew,
         )
 
     # fit wrapper
     trainer = L.Trainer(
         limit_train_batches=1000,
-        limit_val_batches=100,
         max_epochs=max_epochs,
         logger=tb_logger,
         callbacks=[checkpoint_callback],
@@ -78,8 +78,10 @@ def main(expname: str, max_epochs: int, zero_gamma: int, load_ckpt_path: str):
     )
     trainer.fit(model=model, datamodule=datamodule)
 
+    # save model at the end of training
+    model.save_model(checkpoint_path + f"end-epoch-{max_epochs}.ckpt")
 
 if __name__ == "__main__":
     main(
-        expname=args.expname, max_epochs=args.max_epochs, load_ckpt_path=args.load_ckpt_path, zero_gamma=args.zero_gamma
+        expname=args.expname, max_epochs=args.max_epochs, load_ckpt_path=args.load_ckpt_path, skew=args.skew
     )
