@@ -76,6 +76,7 @@ def main(expname: str, max_epochs: int, skew: int, load_ckpt_path: str):
         logger=tb_logger,
         callbacks=[checkpoint_callback],
         enable_checkpointing=True,
+        accelerator="cpu",
     )
     trainer.fit(model=model, datamodule=datamodule)
 
