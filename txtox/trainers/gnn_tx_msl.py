@@ -6,23 +6,24 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import TensorBoardLogger
 
 from txtox.data.datamodules import PyGAnnDataGraphDataModule
-from txtox.models.gnn_het_reg_2d_msl import LitGNNHetReg2dMSL
+from txtox.models.gnn_tx_msl import LitGNNHetReg2dMSL
 from txtox.utils import get_datetime, get_paths
 
 parser = argparse.ArgumentParser(description="Training config")
 parser.add_argument("--expname", type=str, default="debug_msl")
 parser.add_argument("--max_epochs", type=int, default=10)
-parser.add_argument("--zero_gamma", type=int, default=0)
+parser.add_argument("--skew", type=int, default=0)
+parser.add_argument("--k", type=int, default=5)
 parser.add_argument("--load_ckpt_path", type=str, default=None)
 args = parser.parse_args()
 
 
-def main(expname: str, max_epochs: int, zero_gamma: int, load_ckpt_path: str):
+def main(expname: str, max_epochs: int, skew: int, load_ckpt_path: str, k: int):
     # data parameters, we'll eventually obtain this from the data.
 
-    zero_gamma = zero_gamma > 0  # turn into boolean
+    skew = skew > 0  # turn into boolean
     n_genes = 500
-    n_labels = 188  # 158 for test_one_section_hemi.h5ad, 188 for test_3section_hemi_v1.h5ad
+    n_labels = 188
 
     # paths
     paths = get_paths()
@@ -39,11 +40,13 @@ def main(expname: str, max_epochs: int, zero_gamma: int, load_ckpt_path: str):
     # data
     datamodule = PyGAnnDataGraphDataModule(
         data_dir=paths["data_root"],
-        file_names=["test_3section_hemi_v1.h5ad"],
+        file_names=[f"3section_k{k}_{i}.h5ad" for i in range(3)],
         cell_type="subclass",
         spatial_coords=["x_section", "y_section", "z_section"],
         batch_size=50,
+        val_batch_size=100,
         n_hops=2,
+        num_workers=8,
     )
 
     # model
@@ -55,7 +58,7 @@ def main(expname: str, max_epochs: int, zero_gamma: int, load_ckpt_path: str):
             n_labels=n_labels,
             weight_msl_nll=1.0,
             weight_ce=0.1,
-            zero_gamma=zero_gamma,
+            skew=skew,
         )
         print(f"Loaded checkpoint: {load_ckpt_path}")
     else:
@@ -65,21 +68,21 @@ def main(expname: str, max_epochs: int, zero_gamma: int, load_ckpt_path: str):
             weight_msl_nll=1.0,
             weight_ce=0.1,
             zero_gamma=zero_gamma,
+            skew=skew,
         )
 
     # fit wrapper
     trainer = L.Trainer(
         limit_train_batches=1000,
-        limit_val_batches=100,
         max_epochs=max_epochs,
         logger=tb_logger,
         callbacks=[checkpoint_callback],
         enable_checkpointing=True,
+        accelerator="cpu",
     )
     trainer.fit(model=model, datamodule=datamodule)
+    trainer.save_checkpoint(checkpoint_path + f"/end-epoch-{max_epochs}.ckpt")
 
 
 if __name__ == "__main__":
-    main(
-        expname=args.expname, max_epochs=args.max_epochs, load_ckpt_path=args.load_ckpt_path, zero_gamma=args.zero_gamma
-    )
+    main(expname=args.expname, max_epochs=args.max_epochs, load_ckpt_path=args.load_ckpt_path, skew=args.skew, k=args.k)

@@ -6,20 +6,21 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import TensorBoardLogger
 
 from txtox.data.datamodules import PyGAnnDataGraphDataModule
-from txtox.models.gnn_het_reg_2d_fix_pyg_3sec import LitGNNHetRegGauss2d
+from txtox.models.gnn_tx_gauss import LitGNNHetRegGauss2d
 from txtox.utils import get_datetime, get_paths
 
 parser = argparse.ArgumentParser(description="Training config")
 parser.add_argument("--expname", type=str, default="debug")
 parser.add_argument("--max_epochs", type=int, default=10)
 parser.add_argument("--load_ckpt_path", type=str, default=None)
+parser.add_argument("--k", type=int, default=None)
 args = parser.parse_args()
 
 
-def main(expname: str, max_epochs: int, load_ckpt_path: str):
+def main(expname: str, max_epochs: int, load_ckpt_path: str, k: int | None = None):
     # data parameters, we'll eventually obtain this from the data.
     n_genes = 500
-    n_labels = 188  # changed to 158 for test_one_section_hemi.h5ad
+    n_labels = 188
 
     # paths
     paths = get_paths()
@@ -36,10 +37,11 @@ def main(expname: str, max_epochs: int, load_ckpt_path: str):
     # data
     datamodule = PyGAnnDataGraphDataModule(
         data_dir=paths["data_root"],
-        file_names=["test_3section_hemi_v1.h5ad"],
+        file_names=[f"3section_k{k}_{i}.h5ad" for i in range(3)],
         cell_type="subclass",
         spatial_coords=["x_section", "y_section", "z_section"],
         batch_size=50,
+        val_batch_size=100,
         n_hops=2,
     )
 
@@ -56,14 +58,14 @@ def main(expname: str, max_epochs: int, load_ckpt_path: str):
     # fit wrapper
     trainer = L.Trainer(
         limit_train_batches=1000,
-        limit_val_batches=100,
         max_epochs=max_epochs,
         logger=tb_logger,
         callbacks=[checkpoint_callback],
         enable_checkpointing=True,
     )
     trainer.fit(model=model, datamodule=datamodule)
+    trainer.save_checkpoint(checkpoint_path + f"/end-epoch-{max_epochs}.ckpt")
 
 
 if __name__ == "__main__":
-    main(expname=args.expname, max_epochs=args.max_epochs, load_ckpt_path=args.load_ckpt_path)
+    main(expname=args.expname, max_epochs=args.max_epochs, load_ckpt_path=args.load_ckpt_path, k=args.k)
