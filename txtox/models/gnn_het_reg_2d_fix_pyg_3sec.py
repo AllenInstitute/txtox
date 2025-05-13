@@ -6,7 +6,7 @@
 # Only x and y section coordinates are learned.
 # PyG dataloaders: "minibatching" involves multiple input_nodes and their neighbors.
 # loss + forward calculation is modified based on recommendation in Stirn et al. 2023 (equation 5)
-# This version is for comparisons with the msl model. 
+# This version is for comparisons with the msl model.
 
 import lightning as L
 import torch
@@ -40,12 +40,19 @@ class LitGNNHetRegGauss2d(L.LightningModule):
         self.loss_gnll2d = GaussianNLLLoss2d()
         self.loss_ce = nn.CrossEntropyLoss()
 
-        # metrics
-        self.metric_rmse = MeanSquaredError(squared=False, num_outputs=2)
-        self.metric_rmse_overall = MeanSquaredError(squared=False, num_outputs=1)
-        self.metric_overall_acc = MulticlassAccuracy(num_classes=n_labels, top_k=1, average="weighted", multidim_average="global")
-        self.metric_macro_acc = MulticlassAccuracy(num_classes=n_labels, top_k=1, average="macro", multidim_average="global")
-        self.metric_multiclass_acc = MulticlassAccuracy(num_classes=n_labels, top_k=1, average=None, multidim_average="global")
+        # training metrics
+        self.train_metric_rmse = MeanSquaredError(squared=False, num_outputs=2)
+        self.train_metric_rmse_overall = MeanSquaredError(squared=False, num_outputs=1)
+        self.train_metric_overall_acc = MulticlassAccuracy(num_classes=n_labels, top_k=1, average="weighted", multidim_average="global")
+        self.train_metric_macro_acc = MulticlassAccuracy(num_classes=n_labels, top_k=1, average="macro", multidim_average="global")
+        self.train_metric_multiclass_acc = MulticlassAccuracy(num_classes=n_labels, top_k=1, average=None, multidim_average="global")
+
+        # validation metrics
+        self.val_metric_rmse = MeanSquaredError(squared=False, num_outputs=2)
+        self.val_metric_rmse_overall = MeanSquaredError(squared=False, num_outputs=1)
+        self.val_metric_overall_acc = MulticlassAccuracy(num_classes=n_labels, top_k=1, average="weighted", multidim_average="global")
+        self.val_metric_macro_acc = MulticlassAccuracy(num_classes=n_labels, top_k=1, average="macro", multidim_average="global")
+        self.val_metric_multiclass_acc = MulticlassAccuracy(num_classes=n_labels, top_k=1, average=None, multidim_average="global")
 
     def forward(self, x, section_idx, edge_index):
         # x is gene expression.
@@ -86,8 +93,9 @@ class LitGNNHetRegGauss2d(L.LightningModule):
         m_pred, L_pred, celltype_pred = self.forward(gene_exp, section_idx, edgelist)
 
         # Training loss should be calculated for all nodes (including input_nodes and neighbors).
+        # Validation nodes can be part of the neighborhood; loss calculation should be done over training nodes.
         # batch_size passed to NeighborLoader refers to the number of input_nodes only.
-        batch_size = batch.gene_exp.size(0)
+        batch_size = batch["train_mask"].sum()
 
         # Calculate losses
         l2norm_loss = 0.5 * self.loss_l2norm(m_pred[batch["train_mask"]], xy[batch["train_mask"]])
@@ -95,38 +103,36 @@ class LitGNNHetRegGauss2d(L.LightningModule):
         ce_loss = self.loss_ce(celltype_pred[batch["train_mask"]], celltype[batch["train_mask"]].squeeze())
         total_loss = self.weight_gnll * l2norm_loss + self.weight_gnll * gnll_loss + self.weight_ce * ce_loss
 
-        # Log losses
+        # Log losses - provide batch_size to self.log.
         log_config = dict(on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
         self.log("train_gnll_loss", gnll_loss, on_step=True, **log_config)
         self.log("train_ce_loss", ce_loss, on_step=True, **log_config)
         self.log("train_total_loss", total_loss, on_step=False, **log_config)
 
         # Calculate metrics
-        train_metric_rmse_overall = self.metric_rmse_overall(m_pred[batch["train_mask"]], xy[batch["train_mask"]])
-        train_overall_acc = self.metric_overall_acc(
-            preds=celltype_pred[batch["train_mask"]], target=celltype[batch["train_mask"]].reshape(-1)
-        )
-        train_macro_acc = self.metric_macro_acc(
-            preds=celltype_pred[batch["train_mask"]], target=celltype[batch["train_mask"]].reshape(-1)
-        )
-        train_metric_rmse = self.metric_rmse(m_pred[batch["train_mask"]], xy[batch["train_mask"]])
+        _pred = celltype_pred[batch["train_mask"]]
+        _target = celltype[batch["train_mask"]].reshape(-1)
+        self.train_metric_overall_acc(preds=_pred, target=_target)
+        self.train_metric_macro_acc(preds=_pred, target=_target)
+        self.train_metric_rmse_overall(m_pred[batch["train_mask"]], xy[batch["train_mask"]])
+        # Non-scalar values, computed+reset at epoch end manually.
+        # See: https://lightning.ai/docs/torchmetrics/stable/pages/lightning.html
+        self.train_metric_rmse.update(m_pred[batch["train_mask"]], xy[batch["train_mask"]])
 
         # Log metrics
         # fmt:off
-        self.log("train_rmse_overall", train_metric_rmse_overall, on_step=False, **log_config)
-        self.log("train_overall_acc", train_overall_acc, on_step=False, **log_config)
-        self.log("train_macro_acc", train_macro_acc, on_step=False, **log_config)
-        log_dict = {
-            "train_x_rmse": train_metric_rmse[0],
-            "train_y_rmse": train_metric_rmse[1]
-        }
-        # fmt:on
-        self.log_dict(log_dict, on_step=False, on_epoch=True, prog_bar=False, logger=True, batch_size=batch_size)
-
+        self.log("train_rmse_overall", self.train_metric_rmse_overall, **log_config)
+        self.log("train_overall_acc", self.train_metric_overall_acc, **log_config)
+        self.log("train_macro_acc", self.train_metric_macro_acc, **log_config)
         return total_loss
 
+        
+
     def on_train_epoch_end(self):
-        pass
+        train_metric_rmse = self.train_metric_rmse.compute()
+        log_dict = {"train_x_rmse": train_metric_rmse[0], "train_y_rmse": train_metric_rmse[1]}
+        self.log_dict(log_dict, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        self.train_metric_rmse.reset()
 
     def validation_step(self, batch, batch_idx):
         # for GNN, batch size should be 1, and there isn't a batch dimension.
@@ -146,29 +152,33 @@ class LitGNNHetRegGauss2d(L.LightningModule):
         celltype_pred_ = celltype_pred[idx]
 
         # Calculate losses
+        l2norm_loss = 0.5 * self.loss_l2norm(m_pred_, xy_)
         gnll_loss = self.loss_gnll2d(m_pred_, L_pred_, xy_)
         ce_loss = self.loss_ce(celltype_pred_, celltype_.squeeze())
+        total_loss = self.weight_gnll * l2norm_loss + self.weight_gnll * gnll_loss + self.weight_ce * ce_loss
 
         # Log losses
-        log_config = dict(on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
-        self.log("val_gnll_loss", gnll_loss, on_step=True, **log_config)
-        self.log("val_ce_loss", ce_loss, on_step=True, **log_config)
+        log_config = dict(on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log("val_gnll_loss", gnll_loss, batch_size=batch_size, **log_config)
+        self.log("val_ce_loss", ce_loss, batch_size=batch_size, **log_config)
+        self.log("val_total_loss", total_loss, batch_size=batch_size, **log_config)
 
         # Calculate metrics
-        val_metric_rmse = self.metric_rmse(m_pred_, xy_)
-        val_metric_rmse_overall = self.metric_rmse_overall(m_pred_, xy_)
-        val_overall_acc = self.metric_overall_acc(preds=celltype_pred_, target=celltype_.reshape(-1))
-        val_macro_acc = self.metric_macro_acc(preds=celltype_pred_, target=celltype_.reshape(-1))
-        val_metric_multiclass_acc = self.metric_multiclass_acc(preds=celltype_pred_, target=celltype_.reshape(-1))
+        self.val_metric_rmse.update(m_pred_, xy_)
+        self.val_metric_rmse_overall.update(m_pred_, xy_)
+        self.val_metric_overall_acc.update(preds=celltype_pred_, target=celltype_.reshape(-1))
+        self.val_metric_macro_acc.update(preds=celltype_pred_, target=celltype_.reshape(-1))
 
-        log_dict = {"val_x_rmse": val_metric_rmse[0], "val_y_rmse": val_metric_rmse[1]}
-        self.log_dict(log_dict, on_step=False, on_epoch=True, prog_bar=False, logger=True, batch_size=batch_size)
-        self.log("val_rmse_overall", val_metric_rmse_overall, on_step=False, **log_config)
-        self.log("val_overall_acc", val_overall_acc, on_step=False, **log_config)
-        self.log("val_macro_acc", val_macro_acc, on_step=False, **log_config)
+        log_config = dict(on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
+        self.log("val_rmse_overall", self.val_metric_rmse_overall, **log_config)
+        self.log("val_overall_acc", self.val_metric_overall_acc, **log_config)
+        self.log("val_macro_acc", self.val_metric_macro_acc, **log_config)
 
     def on_validation_epoch_end(self):
-        pass
+        val_metric_rmse = self.val_metric_rmse.compute()
+        log_dict = {"val_x_rmse": val_metric_rmse[0], "val_y_rmse": val_metric_rmse[1]}
+        self.log_dict(log_dict, on_epoch=True, prog_bar=False, logger=True)
+        self.val_metric_rmse.reset()
 
     def test_step(self, batch, batch_idx):
         gene_exp, edgelist, xy, section_idx, celltype = self.proc_batch(batch)
