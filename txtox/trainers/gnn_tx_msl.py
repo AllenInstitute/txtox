@@ -1,7 +1,9 @@
 import argparse
+import pickle
 from pathlib import Path
 
 import lightning as L
+import numpy as np
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import TensorBoardLogger
 
@@ -67,7 +69,6 @@ def main(expname: str, max_epochs: int, skew: int, load_ckpt_path: str, k: int):
             n_labels=n_labels,
             weight_msl_nll=1.0,
             weight_ce=0.1,
-            zero_gamma=zero_gamma,
             skew=skew,
         )
 
@@ -82,6 +83,58 @@ def main(expname: str, max_epochs: int, skew: int, load_ckpt_path: str, k: int):
     )
     trainer.fit(model=model, datamodule=datamodule)
     trainer.save_checkpoint(checkpoint_path + f"/end-epoch-{max_epochs}.ckpt")
+
+    result = {}
+    when = {}
+
+    # get predictions from last saved model
+    result["last"] = trainer.predict(model, datamodule=datamodule)
+    when["last"] = max_epochs
+
+    # get results from best checkpoint
+    ckpt = next(iter(checkpoint_callback.best_k_models.keys()))
+    model = LitGNNHetReg2dMSL.load_from_checkpoint(ckpt, input_dim=n_genes, n_labels=n_labels)
+    result["best"] = trainer.predict(model, datamodule=datamodule)
+    when["best"] = int(ckpt.split("epoch=")[1].split("-")[0])
+
+    for key, predictions in result.items():
+        xy_mu_pred = np.concatenate([predictions[batch][0] for batch in range(len(predictions))], axis=0)
+        xy_L_pred = np.concatenate([predictions[batch][1] for batch in range(len(predictions))], axis=0)
+        xy_gamma_pred = np.concatenate([predictions[batch][2] for batch in range(len(predictions))], axis=0)
+        celltype_pred = np.concatenate([predictions[batch][3] for batch in range(len(predictions))], axis=0)
+
+        # convert L to covariance matrices using L @ L.T
+        xy_cov_pred = xy_L_pred @ xy_L_pred.transpose(0, 2, 1)
+        print(xy_cov_pred.shape)
+
+        # calculates the eigenvalues and eigenvectors for all covariance matrices
+        eigvals, eigvecs = np.linalg.eig(xy_cov_pred)
+
+        # order them in descending order of eigenvalues
+        order = np.argsort(-eigvals, axis=1)
+        eigvals_ord = np.take_along_axis(eigvals, order, axis=1)
+        eigvecs_ord = np.take_along_axis(eigvecs, order[:, np.newaxis, :], axis=2)
+
+        eigvals = eigvals_ord
+        eigvecs = eigvecs_ord
+        del eigvals_ord, eigvecs_ord
+
+        xy = datamodule.dataset.adata.obs[["x_section", "y_section"]].values
+
+        # data for clustering
+        data = {
+            "eigvals": eigvals,
+            "eigvecs": eigvecs,
+            "xy_cov_pred": xy_cov_pred,
+            "xy_mu_pred": xy_mu_pred,
+            "xy_gamma_pred": xy_gamma_pred,
+            "xy": xy,
+            "section_idx": datamodule.dataset.adata.obs["z_section"].values,
+            "subclass": datamodule.dataset.adata.obs["subclass"].values,
+            "subclass_color": datamodule.dataset.adata.obs["subclass_color"].values,
+        }
+
+        pickle.dump(data, open(paths["data_root"] + f"/results/knn-part2/{key}_{expname}.pkl", "wb"))
 
 
 if __name__ == "__main__":
